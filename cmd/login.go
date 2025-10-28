@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"log"
 
+	"github.com/chukul/cloudctl/internal"
 	"github.com/spf13/cobra"
-	"github.com/yourname/cloudctl/internal"
 )
 
 var (

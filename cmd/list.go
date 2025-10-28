@@ -3,8 +3,8 @@ package cmd
 import (
 	"fmt"
 
+	"github.com/chukul/cloudctl/internal"
 	"github.com/spf13/cobra"
-	"github.com/yourname/cloudctl/internal"
 )
 
 func init() {

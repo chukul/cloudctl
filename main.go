@@ -1,6 +1,6 @@
 package main
 
-import "github.com/yourname/cloudctl/cmd"
+import "github.com/chukul/cloudctl/cmd"
 
 func main() {
 	cmd.Execute()

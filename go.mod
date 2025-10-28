@@ -1,4 +1,4 @@
-module github.com/yourname/cloudctl
+module github.com/chukul/cloudctl
 
 go 1.22
 

@@ -8,9 +8,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/chukul/cloudctl/internal"
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
-	"github.com/yourname/cloudctl/internal"
 )
 
 var (
