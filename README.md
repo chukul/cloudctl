@@ -1,0 +1,320 @@
+# CloudCtl
+
+```
+   ________                _________ __  __
+  / ____/ /___  __  ______/ / ____// /_/ /
+ / /   / / __ \/ / / / __  / /    / __/ / 
+/ /___/ / /_/ / /_/ / /_/ / /___ / /_/ /  
+\____/_/\____/\__,_/\__,_/\____/ \__/_/   
+```
+
+A lightweight CLI tool for securely managing AWS AssumeRole sessions with MFA support and encrypted credential storage.
+
+## Features
+
+- 🔐 **Secure Credential Storage** - Encrypt AWS credentials with AES-256-GCM
+- 🎯 **AssumeRole Support** - Easily assume IAM roles with MFA
+- 🌐 **Console Access** - Generate AWS Console sign-in URLs from stored sessions
+- 📦 **Session Management** - List, export, and manage multiple AWS sessions
+- 🔑 **MFA Support** - Built-in multi-factor authentication support
+- 🌍 **Region Support** - Default region configuration (ap-southeast-1)
+
+## Installation
+
+### Prerequisites
+
+- Go 1.22 or higher
+- AWS CLI configured with at least one profile
+- Valid AWS credentials
+
+### Build from Source
+
+```bash
+# Clone the repository
+git clone https://github.com/chukul/cloudctl.git
+cd cloudctl
+
+# Build the binary
+go build
+
+# (Optional) Move to PATH
+sudo mv cloudctl /usr/local/bin/
+```
+
+## Quick Start
+
+### 1. Login and Assume Role
+
+Assume an IAM role and store the credentials securely:
+
+```bash
+cloudctl login \
+  --source <source-profile> \
+  --profile <session-name> \
+  --role <role-arn> \
+  --secret "your-32-char-encryption-key" \
+  --region ap-southeast-1
+```
+
+**Example:**
+```bash
+cloudctl login \
+  --source default \
+  --profile prod-admin \
+  --role arn:aws:iam::123456789012:role/AdminRole \
+  --secret "1234567890ABCDEF1234567890ABCDEF"
+```
+
+**With MFA:**
+```bash
+cloudctl login \
+  --source default \
+  --profile prod-admin \
+  --role arn:aws:iam::123456789012:role/AdminRole \
+  --mfa arn:aws:iam::123456789012:mfa/username \
+  --secret "1234567890ABCDEF1234567890ABCDEF"
+```
+
+### 2. View Stored Sessions
+
+List all stored sessions with their status:
+
+```bash
+cloudctl status --secret "1234567890ABCDEF1234567890ABCDEF"
+```
+
+**Output:**
+```
+PROFILE         ROLE ARN                                 EXPIRATION           REMAINING    STATUS  
+----------------------------------------------------------------------------------------------------
+prod-admin      arn:aws:iam::123456789012:role/AdminRole 2025-11-20 10:30:00  45m30s       ACTIVE
+```
+
+### 3. Export Credentials
+
+Export credentials to environment variables:
+
+```bash
+# Export credentials
+eval $(cloudctl export --profile prod-admin --secret "1234567890ABCDEF1234567890ABCDEF")
+
+# Verify
+aws sts get-caller-identity
+```
+
+**Important:** Unset `AWS_PROFILE` if it's already set in your environment:
+```bash
+unset AWS_PROFILE
+eval $(cloudctl export --profile prod-admin --secret "1234567890ABCDEF1234567890ABCDEF")
+```
+
+### 4. Open AWS Console
+
+Generate and open AWS Console in your browser:
+
+```bash
+# Open console in default region (ap-southeast-1)
+cloudctl console --profile prod-admin --secret "1234567890ABCDEF1234567890ABCDEF" --open
+
+# Open console in specific region
+cloudctl console --profile prod-admin --secret "1234567890ABCDEF1234567890ABCDEF" --region us-east-1 --open
+```
+
+### 5. Logout
+
+Remove stored credentials:
+
+```bash
+# Remove specific profile
+cloudctl logout --profile prod-admin
+
+# Remove all profiles
+cloudctl logout --all
+```
+
+## Commands Reference
+
+### `login`
+
+Assume an AWS role and store credentials locally.
+
+**Flags:**
+- `--source` - Source AWS CLI profile for base credentials (required)
+- `--profile` - Name to store the new session as (required)
+- `--role` - Target IAM role ARN to assume (required)
+- `--mfa` - MFA device ARN (optional)
+- `--secret` - Encryption key for credential storage (optional but recommended)
+- `--region` - AWS region (default: ap-southeast-1)
+
+### `status`
+
+Show all stored AWS sessions with expiration status.
+
+**Flags:**
+- `--secret` - Encryption key to decrypt credentials
+
+### `export`
+
+Export stored AWS session as environment variables.
+
+**Flags:**
+- `--profile` - Profile to export (required)
+- `--secret` - Encryption key to decrypt credentials (required)
+
+### `console`
+
+Generate AWS Console sign-in URL from stored session.
+
+**Flags:**
+- `--profile` - Profile to generate console URL for (required)
+- `--secret` - Encryption key to decrypt credentials (required)
+- `--region` - AWS region for console (default: ap-southeast-1)
+- `--open` - Automatically open URL in browser
+
+### `list`
+
+List all stored profile names.
+
+### `logout`
+
+Remove stored credentials.
+
+**Flags:**
+- `--profile` - Profile to remove
+- `--all` - Remove all profiles
+
+## Configuration
+
+### Encryption Key
+
+CloudCtl uses AES-256-GCM encryption for storing credentials. Your encryption key should be:
+- Exactly 32 characters long
+- Kept secure and not shared
+- The same key must be used for storing and retrieving credentials
+
+**Example key generation:**
+```bash
+# Generate a random 32-character key
+openssl rand -hex 16
+```
+
+### Storage Location
+
+Credentials are stored in:
+```
+~/.cloudctl/credentials.json
+```
+
+This file contains encrypted credentials and should be kept secure.
+
+## Security Best Practices
+
+1. **Use Strong Encryption Keys** - Generate random 32-character keys
+2. **Don't Commit Secrets** - Never commit your encryption key or credentials
+3. **Rotate Sessions** - Regularly refresh your assumed role sessions
+4. **Use MFA** - Enable MFA for sensitive role assumptions
+5. **Limit Session Duration** - Use appropriate session durations (default: 1 hour)
+
+## Troubleshooting
+
+### "The config profile (X) could not be found"
+
+This error occurs when `AWS_PROFILE` is set in your environment. Unset it:
+```bash
+unset AWS_PROFILE
+```
+
+### "Failed to load source profile"
+
+Ensure your source profile exists in `~/.aws/credentials`:
+```bash
+cat ~/.aws/credentials
+```
+
+### "Invalid secret key"
+
+The encryption key used for decryption doesn't match the one used for encryption. Ensure you're using the same 32-character key.
+
+### "Failed to assume role"
+
+Check that:
+1. Your source profile has valid credentials
+2. The role ARN is correct
+3. Your source credentials have permission to assume the role
+4. The role's trust policy allows your source identity
+
+## Development
+
+### Project Structure
+
+```
+cloudctl/
+├── cmd/              # Command implementations
+│   ├── console.go    # Console sign-in command
+│   ├── export.go     # Export credentials command
+│   ├── list.go       # List profiles command
+│   ├── login.go      # Login/assume role command
+│   ├── logout.go     # Logout command
+│   ├── root.go       # Root command and CLI setup
+│   └── status.go     # Status command
+├── internal/         # Internal packages
+│   ├── aws.go        # AWS SDK helpers
+│   ├── crypto.go     # Encryption/decryption
+│   ├── session.go    # Session types
+│   ├── storage.go    # Credential storage
+│   └── types.go      # Type definitions
+├── scripts/          # Helper scripts
+│   └── console-open.sh
+├── go.mod
+├── go.sum
+├── main.go
+└── README.md
+```
+
+### Building
+
+```bash
+# Build for current platform
+go build
+
+# Build for specific platform
+GOOS=linux GOARCH=amd64 go build -o cloudctl-linux
+GOOS=darwin GOARCH=arm64 go build -o cloudctl-macos
+GOOS=windows GOARCH=amd64 go build -o cloudctl.exe
+```
+
+### Testing
+
+```bash
+# Run tests
+go test ./...
+
+# Run with coverage
+go test -cover ./...
+```
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add some amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+## License
+
+This project is open source and available under the MIT License.
+
+## Acknowledgments
+
+- Inspired by [Leapp](https://www.leapp.cloud/)
+- Built with [Cobra](https://github.com/spf13/cobra) CLI framework
+- Uses [AWS SDK for Go v2](https://github.com/aws/aws-sdk-go-v2)
+
+## Support
+
+For issues, questions, or contributions, please visit:
+- GitHub Issues: https://github.com/chukul/cloudctl/issues
+- GitHub Repository: https://github.com/chukul/cloudctl
