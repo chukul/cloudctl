@@ -1,6 +1,7 @@
 package internal
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -10,33 +11,29 @@ import (
 
 var storePath = filepath.Join(os.Getenv("HOME"), ".cloudctl", "credentials.json")
 
-type storedProfile struct {
-	AccessKey    string `json:"AccessKey"`
-	SecretKey    string `json:"SecretKey"`
-	SessionToken string `json:"SessionToken"`
-	Expiration   string `json:"Expiration"`
-	RoleArn      string `json:"RoleArn"`
-	SessionName  string `json:"SessionName"`
-}
-
+// SaveCredentials encrypts and stores AWS session
 func SaveCredentials(profile string, creds *AWSSession, key string) error {
 	os.MkdirAll(filepath.Dir(storePath), 0700)
 
-	encrypted := make(map[string]string)
-	ak, _ := Encrypt(key, creds.AccessKey)
-	sk, _ := Encrypt(key, creds.SecretKey)
-	st, _ := Encrypt(key, creds.SessionToken)
-	ex, _ := Encrypt(key, creds.Expiration.Format(time.RFC3339))
-	rn, _ := Encrypt(key, creds.RoleArn)
-	sn, _ := Encrypt(key, creds.SessionName)
+	// encrypt each field using []byte(key)
+	akEnc, _ := Encrypt([]byte(creds.AccessKey), []byte(key))
+	skEnc, _ := Encrypt([]byte(creds.SecretKey), []byte(key))
+	stEnc, _ := Encrypt([]byte(creds.SessionToken), []byte(key))
+	exEnc, _ := Encrypt([]byte(creds.Expiration.Format(time.RFC3339)), []byte(key))
+	rnEnc, _ := Encrypt([]byte(creds.RoleArn), []byte(key))
+	snEnc, _ := Encrypt([]byte(creds.SessionName), []byte(key))
 
-	encrypted["AccessKey"] = ak
-	encrypted["SecretKey"] = sk
-	encrypted["SessionToken"] = st
-	encrypted["Expiration"] = ex
-	encrypted["RoleArn"] = rn
-	encrypted["SessionName"] = sn
+	// convert encrypted bytes to base64 strings for JSON
+	encrypted := map[string]string{
+		"AccessKey":    base64.StdEncoding.EncodeToString(akEnc),
+		"SecretKey":    base64.StdEncoding.EncodeToString(skEnc),
+		"SessionToken": base64.StdEncoding.EncodeToString(stEnc),
+		"Expiration":   base64.StdEncoding.EncodeToString(exEnc),
+		"RoleArn":      base64.StdEncoding.EncodeToString(rnEnc),
+		"SessionName":  base64.StdEncoding.EncodeToString(snEnc),
+	}
 
+	// load existing data
 	data := make(map[string]map[string]string)
 	if _, err := os.Stat(storePath); err == nil {
 		b, _ := os.ReadFile(storePath)
@@ -44,52 +41,44 @@ func SaveCredentials(profile string, creds *AWSSession, key string) error {
 	}
 
 	data[profile] = encrypted
+
+	// save updated JSON
 	b, _ := json.MarshalIndent(data, "", "  ")
 	return os.WriteFile(storePath, b, 0600)
 }
 
+// LoadCredentials decrypts AWS session for a profile
 func LoadCredentials(profile, key string) (*AWSSession, error) {
 	b, err := os.ReadFile(storePath)
 	if err != nil {
 		return nil, err
 	}
+
 	var data map[string]map[string]string
 	json.Unmarshal(b, &data)
 	enc := data[profile]
 
-	ak, _ := Decrypt(key, enc["AccessKey"])
-	sk, _ := Decrypt(key, enc["SecretKey"])
-	st, _ := Decrypt(key, enc["SessionToken"])
-	ex, _ := Decrypt(key, enc["Expiration"])
-	rn, _ := Decrypt(key, enc["RoleArn"])
-	sn, _ := Decrypt(key, enc["SessionName"])
+	decryptField := func(field string) string {
+		bytes, _ := base64.StdEncoding.DecodeString(enc[field])
+		decrypted, _ := Decrypt(bytes, []byte(key))
+		return string(decrypted)
+	}
 
-	exp, _ := time.Parse(time.RFC3339, ex)
+	expStr := decryptField("Expiration")
+	exp, _ := time.Parse(time.RFC3339, expStr)
+
 	return &AWSSession{
-		AccessKey:    ak,
-		SecretKey:    sk,
-		SessionToken: st,
-		Expiration:   exp,
-		RoleArn:      rn,
-		SessionName:  sn,
 		Profile:      profile,
+		AccessKey:    decryptField("AccessKey"),
+		SecretKey:    decryptField("SecretKey"),
+		SessionToken: decryptField("SessionToken"),
+		Expiration:   exp,
+		RoleArn:      decryptField("RoleArn"),
+		SessionName:  decryptField("SessionName"),
 	}, nil
 }
 
-func ListProfiles() ([]string, error) {
-	b, err := os.ReadFile(storePath)
-	if err != nil {
-		return []string{}, nil
-	}
-	var data map[string]interface{}
-	json.Unmarshal(b, &data)
-	var keys []string
-	for k := range data {
-		keys = append(keys, k)
-	}
-	return keys, nil
-}
-
+// RemoveProfile deletes a stored profile
 func RemoveProfile(profile string) error {
 	b, err := os.ReadFile(storePath)
 	if err != nil {
@@ -108,22 +97,23 @@ func RemoveProfile(profile string) error {
 	delete(data, profile)
 
 	if len(data) == 0 {
-		os.Remove(storePath)
-		return nil
+		return os.Remove(storePath)
 	}
 
 	out, _ := json.MarshalIndent(data, "", "  ")
 	return os.WriteFile(storePath, out, 0600)
 }
 
+// ClearAllCredentials removes all stored sessions
 func ClearAllCredentials() error {
 	return os.Remove(storePath)
 }
 
+// ListAllSessions returns all stored AWS sessions
 func ListAllSessions(secret string) ([]*AWSSession, error) {
 	b, err := os.ReadFile(storePath)
 	if err != nil {
-		return []*AWSSession{}, nil // empty if file missing
+		return []*AWSSession{}, nil
 	}
 
 	var data map[string]map[string]string
@@ -133,14 +123,14 @@ func ListAllSessions(secret string) ([]*AWSSession, error) {
 
 	sessions := []*AWSSession{}
 	for profile, enc := range data {
-		ak, _ := Decrypt(secret, enc["AccessKey"])
-		sk, _ := Decrypt(secret, enc["SecretKey"])
-		st, _ := Decrypt(secret, enc["SessionToken"])
-		ex, _ := Decrypt(secret, enc["Expiration"])
-		rn, _ := Decrypt(secret, enc["RoleArn"])
-		sn, _ := Decrypt(secret, enc["SessionName"])
+		decryptField := func(field string) string {
+			bytes, _ := base64.StdEncoding.DecodeString(enc[field])
+			decrypted, _ := Decrypt(bytes, []byte(secret))
+			return string(decrypted)
+		}
 
-		exp, _ := time.Parse(time.RFC3339, ex)
+		expStr := decryptField("Expiration")
+		exp, _ := time.Parse(time.RFC3339, expStr)
 
 		revoked := false
 		if val, ok := enc["Revoked"]; ok && val == "true" {
@@ -149,15 +139,29 @@ func ListAllSessions(secret string) ([]*AWSSession, error) {
 
 		sessions = append(sessions, &AWSSession{
 			Profile:      profile,
-			AccessKey:    ak,
-			SecretKey:    sk,
-			SessionToken: st,
+			AccessKey:    decryptField("AccessKey"),
+			SecretKey:    decryptField("SecretKey"),
+			SessionToken: decryptField("SessionToken"),
 			Expiration:   exp,
-			RoleArn:      rn,
-			SessionName:  sn,
+			RoleArn:      decryptField("RoleArn"),
+			SessionName:  decryptField("SessionName"),
 			Revoked:      revoked,
 		})
 	}
 
 	return sessions, nil
+}
+
+func ListProfiles() ([]string, error) {
+	b, err := os.ReadFile(storePath)
+	if err != nil {
+		return []string{}, nil
+	}
+	var data map[string]interface{}
+	json.Unmarshal(b, &data)
+	keys := make([]string, 0, len(data))
+	for k := range data {
+		keys = append(keys, k)
+	}
+	return keys, nil
 }

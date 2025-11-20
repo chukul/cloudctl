@@ -2,41 +2,43 @@ package cmd
 
 import (
 	"fmt"
-	"log"
 
 	"github.com/chukul/cloudctl/internal"
 	"github.com/spf13/cobra"
 )
 
-func init() {
-	exportCmd.Flags().StringVar(&profile, "profile", "default", "Profile to export credentials for")
-	exportCmd.Flags().StringVar(&secretKey, "secret", "", "Local encryption key (same used during login)")
-	rootCmd.AddCommand(exportCmd)
-}
+var exportProfile string
+var exportSecret string
 
 var exportCmd = &cobra.Command{
 	Use:   "export",
-	Short: "Export AWS credentials as environment variables (auto-refresh if expired)",
+	Short: "Export stored AWS session as environment variables",
 	Run: func(cmd *cobra.Command, args []string) {
-		if secretKey == "" {
-			log.Fatal("Error: --secret is required.")
+		if exportProfile == "" {
+			fmt.Println("❌ You must specify --profile to export")
+			return
 		}
 
-		sess, err := internal.LoadCredentials(profile, secretKey)
+		if exportSecret == "" {
+			fmt.Println("❌ You must specify --secret to decrypt credentials")
+			return
+		}
+
+		s, err := internal.LoadCredentials(exportProfile, exportSecret)
 		if err != nil {
-			log.Fatalf("Failed to load credentials: %v", err)
+			fmt.Printf("❌ Failed to load session for profile '%s': %v\n", exportProfile, err)
+			return
 		}
 
-		sess, refreshed, err := internal.RefreshIfExpired(sess, secretKey)
-		if err != nil {
-			log.Fatalf("Error during refresh: %v", err)
-		}
-		if refreshed {
-			fmt.Println("✅ Session refreshed successfully.")
-		}
-
-		fmt.Printf("export AWS_ACCESS_KEY_ID=%s\n", sess.AccessKey)
-		fmt.Printf("export AWS_SECRET_ACCESS_KEY=%s\n", sess.SecretKey)
-		fmt.Printf("export AWS_SESSION_TOKEN=%s\n", sess.SessionToken)
+		// Output shell-compatible export commands
+		fmt.Printf("export AWS_ACCESS_KEY_ID=%s\n", s.AccessKey)
+		fmt.Printf("export AWS_SECRET_ACCESS_KEY=%s\n", s.SecretKey)
+		fmt.Printf("export AWS_SESSION_TOKEN=%s\n", s.SessionToken)
 	},
+}
+
+func init() {
+	exportCmd.Flags().StringVar(&exportProfile, "profile", "", "Profile to export")
+	exportCmd.Flags().StringVar(&exportSecret, "secret", "", "Secret key for decryption (optional)")
+	rootCmd.AddCommand(exportCmd)
 }
