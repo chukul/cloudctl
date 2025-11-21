@@ -18,6 +18,9 @@ A lightweight CLI tool for securely managing AWS AssumeRole sessions with MFA su
 - 📦 **Session Management** - List, export, and manage multiple AWS sessions
 - 🔑 **MFA Support** - Built-in multi-factor authentication support
 - 🌍 **Region Support** - Default region configuration (ap-southeast-1)
+- 🚀 **Quick Switch** - Fast profile switching with one command
+- 🎨 **Color-Coded Status** - Visual indicators for session health (active/expiring/expired)
+- 💻 **Shell Integration** - Display current session in your shell prompt
 
 ## Installation
 
@@ -90,7 +93,23 @@ PROFILE         ROLE ARN                                 EXPIRATION           RE
 prod-admin      arn:aws:iam::123456789012:role/AdminRole 2025-11-20 10:30:00  45m30s       ACTIVE
 ```
 
-### 3. Export Credentials
+### 3. Quick Switch Between Profiles
+
+Fast profile switching with one command:
+
+```bash
+# Set your secret once
+export CLOUDCTL_SECRET="1234567890ABCDEF1234567890ABCDEF"
+
+# Switch to any profile instantly
+eval $(cloudctl switch prod-admin)
+eval $(cloudctl switch dev-readonly)
+
+# Or without environment variable
+eval $(cloudctl switch prod-admin --secret "1234567890ABCDEF1234567890ABCDEF")
+```
+
+### 4. Export Credentials
 
 Export credentials to environment variables:
 
@@ -108,7 +127,7 @@ unset AWS_PROFILE
 eval $(cloudctl export --profile prod-admin --secret "1234567890ABCDEF1234567890ABCDEF")
 ```
 
-### 4. Open AWS Console
+### 5. Open AWS Console
 
 Generate and open AWS Console in your browser:
 
@@ -120,7 +139,7 @@ cloudctl console --profile prod-admin --secret "1234567890ABCDEF1234567890ABCDEF
 cloudctl console --profile prod-admin --secret "1234567890ABCDEF1234567890ABCDEF" --region us-east-1 --open
 ```
 
-### 5. Logout
+### 6. Logout
 
 Remove stored credentials:
 
@@ -148,10 +167,29 @@ Assume an AWS role and store credentials locally.
 
 ### `status`
 
-Show all stored AWS sessions with expiration status.
+Show all stored AWS sessions with color-coded expiration status.
 
 **Flags:**
 - `--secret` - Encryption key to decrypt credentials
+
+**Status Colors:**
+- 🟢 Green (ACTIVE) - Session has more than 15 minutes remaining
+- 🟡 Yellow (EXPIRING) - Session expires in 15 minutes or less
+- 🔴 Red (EXPIRED) - Session has expired
+
+### `switch`
+
+Quick switch to a profile and export credentials in one command.
+
+**Flags:**
+- `<profile>` - Profile name to switch to (required)
+- `--secret` - Encryption key to decrypt credentials (or set CLOUDCTL_SECRET env var)
+
+**Usage:**
+```bash
+export CLOUDCTL_SECRET="your-secret"
+eval $(cloudctl switch prod-admin)
+```
 
 ### `export`
 
@@ -174,6 +212,18 @@ Generate AWS Console sign-in URL from stored session.
 ### `list`
 
 List all stored profile names.
+
+### `prompt`
+
+Display current session info for shell prompt integration.
+
+**Subcommands:**
+- `cloudctl prompt` - Display formatted prompt string (e.g., ☁️ prod-admin (45m))
+- `cloudctl prompt info` - Display detailed session info in JSON format
+- `cloudctl prompt setup` - Show shell integration setup instructions
+
+**Flags:**
+- `--secret` - Encryption key to decrypt credentials (or set CLOUDCTL_SECRET env var)
 
 ### `logout`
 

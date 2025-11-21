@@ -11,6 +11,14 @@ import (
 
 var statusSecret string
 
+// ANSI color codes
+const (
+	colorReset  = "\033[0m"
+	colorRed    = "\033[31m"
+	colorGreen  = "\033[32m"
+	colorYellow = "\033[33m"
+)
+
 var statusCmd = &cobra.Command{
 	Use:   "status",
 	Short: "Show stored AWS sessions",
@@ -31,19 +39,31 @@ var statusCmd = &cobra.Command{
 
 		now := time.Now()
 		for _, s := range sessions {
-			status := "ACTIVE"
 			remaining := s.Expiration.Sub(now)
+			
+			var status string
+			var statusColor string
+			
 			if remaining <= 0 {
 				status = "EXPIRED"
+				statusColor = colorRed
 				remaining = 0
+			} else if remaining <= 15*time.Minute {
+				status = "EXPIRING"
+				statusColor = colorYellow
+			} else {
+				status = "ACTIVE"
+				statusColor = colorGreen
 			}
 
-			fmt.Printf("%-15s %-40s %-20s %-12s %-8s\n",
+			fmt.Printf("%-15s %-40s %-20s %-12s %s%-8s%s\n",
 				s.Profile,
 				s.RoleArn,
 				s.Expiration.Format("2006-01-02 15:04:05"),
 				remaining.Round(time.Second),
+				statusColor,
 				status,
+				colorReset,
 			)
 		}
 	},
