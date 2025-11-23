@@ -9,8 +9,9 @@ type AWSSession struct {
 	Expiration   time.Time
 
 	// New fields for auto-refresh
-	Profile     string
-	RoleArn     string
-	SessionName string
-	Revoked     bool // optional flag
+	Profile       string
+	RoleArn       string
+	SessionName   string
+	SourceProfile string // Source profile used for assuming the role
+	Revoked       bool   // optional flag
 }

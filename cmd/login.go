@@ -99,12 +99,13 @@ var loginCmd = &cobra.Command{
 		expiration := *roleResult.Credentials.Expiration
 
 		session := &internal.AWSSession{
-			Profile:      profile,
-			AccessKey:    *roleResult.Credentials.AccessKeyId,
-			SecretKey:    *roleResult.Credentials.SecretAccessKey,
-			SessionToken: *roleResult.Credentials.SessionToken,
-			Expiration:   expiration,
-			RoleArn:      roleArn,
+			Profile:       profile,
+			AccessKey:     *roleResult.Credentials.AccessKeyId,
+			SecretKey:     *roleResult.Credentials.SecretAccessKey,
+			SessionToken:  *roleResult.Credentials.SessionToken,
+			Expiration:    expiration,
+			RoleArn:       roleArn,
+			SourceProfile: sourceProfile,
 		}
 
 		if secretKey != "" {
@@ -125,7 +126,7 @@ var loginCmd = &cobra.Command{
 		fmt.Printf("   Role: %s\n", roleArn)
 		fmt.Printf("   Source: %s\n", sourceProfile)
 		fmt.Printf("   Expires: %s (%v remaining)\n",
-			expiration.Format("2006-01-02 15:04:05"), remaining)
+			expiration.Local().Format("2006-01-02 15:04:05"), remaining)
 	},
 }
 

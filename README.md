@@ -21,6 +21,8 @@ A lightweight CLI tool for securely managing AWS AssumeRole sessions with MFA su
 - 🚀 **Quick Switch** - Fast profile switching with one command
 - 🎨 **Color-Coded Status** - Visual indicators for session health (active/expiring/expired)
 - 💻 **Shell Integration** - Display current session in your shell prompt
+- 🔄 **Auto Refresh** - Renew sessions before they expire with bulk operations
+- ⚡ **Shell Init** - One-command setup for seamless shell integration
 
 ## Installation
 
@@ -43,6 +45,28 @@ go build
 # (Optional) Move to PATH
 sudo mv cloudctl /usr/local/bin/
 ```
+
+### Shell Integration (Recommended)
+
+Set up shell integration for the best experience:
+
+```bash
+# Generate and add to your shell config
+cloudctl init >> ~/.zshrc  # or ~/.bashrc for Bash
+
+# Edit ~/.zshrc and set your encryption secret
+export CLOUDCTL_SECRET="your-32-char-encryption-key"
+
+# Reload your shell
+source ~/.zshrc
+```
+
+After setup, you get:
+- `ccs <profile>` - Quick switch without eval
+- `ccl` - Alias for cloudctl login
+- `ccst` - Alias for cloudctl status
+- `ccr` - Alias for cloudctl refresh
+- `ccc` - Alias for cloudctl console
 
 ## Quick Start
 
@@ -107,15 +131,6 @@ eval $(cloudctl switch dev-readonly)
 
 # Or without environment variable
 eval $(cloudctl switch prod-admin --secret "1234567890ABCDEF1234567890ABCDEF")
-```
-
-### 4. Export Credentials
-
-Export credentials to environment variables:
-
-```bash
-# Export credentials
-eval $(cloudctl export --profile prod-admin --secret "1234567890ABCDEF1234567890ABCDEF")
 
 # Verify
 aws sts get-caller-identity
@@ -124,10 +139,10 @@ aws sts get-caller-identity
 **Important:** Unset `AWS_PROFILE` if it's already set in your environment:
 ```bash
 unset AWS_PROFILE
-eval $(cloudctl export --profile prod-admin --secret "1234567890ABCDEF1234567890ABCDEF")
+eval $(cloudctl switch prod-admin)
 ```
 
-### 5. Open AWS Console
+### 4. Open AWS Console
 
 Generate and open AWS Console in your browser:
 
@@ -139,7 +154,7 @@ cloudctl console --profile prod-admin --secret "1234567890ABCDEF1234567890ABCDEF
 cloudctl console --profile prod-admin --secret "1234567890ABCDEF1234567890ABCDEF" --region us-east-1 --open
 ```
 
-### 6. Logout
+### 5. Logout
 
 Remove stored credentials:
 
@@ -191,14 +206,6 @@ export CLOUDCTL_SECRET="your-secret"
 eval $(cloudctl switch prod-admin)
 ```
 
-### `export`
-
-Export stored AWS session as environment variables.
-
-**Flags:**
-- `--profile` - Profile to export (required)
-- `--secret` - Encryption key to decrypt credentials (required)
-
 ### `console`
 
 Generate AWS Console sign-in URL from stored session.
@@ -212,6 +219,25 @@ Generate AWS Console sign-in URL from stored session.
 ### `list`
 
 List all stored profile names.
+
+### `init`
+
+Generate shell integration code for easy setup.
+
+**Usage:**
+```bash
+# Add to your shell config
+cloudctl init >> ~/.zshrc
+
+# Or view the output
+cloudctl init
+```
+
+**What it provides:**
+- `ccs` function for quick switching without eval
+- Aliases for common commands (ccl, ccst, ccr, ccc)
+- Shell prompt integration
+- CLOUDCTL_SECRET environment variable setup
 
 ### `prompt`
 

@@ -22,15 +22,17 @@ func SaveCredentials(profile string, creds *AWSSession, key string) error {
 	exEnc, _ := Encrypt([]byte(creds.Expiration.Format(time.RFC3339)), []byte(key))
 	rnEnc, _ := Encrypt([]byte(creds.RoleArn), []byte(key))
 	snEnc, _ := Encrypt([]byte(creds.SessionName), []byte(key))
+	spEnc, _ := Encrypt([]byte(creds.SourceProfile), []byte(key))
 
 	// convert encrypted bytes to base64 strings for JSON
 	encrypted := map[string]string{
-		"AccessKey":    base64.StdEncoding.EncodeToString(akEnc),
-		"SecretKey":    base64.StdEncoding.EncodeToString(skEnc),
-		"SessionToken": base64.StdEncoding.EncodeToString(stEnc),
-		"Expiration":   base64.StdEncoding.EncodeToString(exEnc),
-		"RoleArn":      base64.StdEncoding.EncodeToString(rnEnc),
-		"SessionName":  base64.StdEncoding.EncodeToString(snEnc),
+		"AccessKey":     base64.StdEncoding.EncodeToString(akEnc),
+		"SecretKey":     base64.StdEncoding.EncodeToString(skEnc),
+		"SessionToken":  base64.StdEncoding.EncodeToString(stEnc),
+		"Expiration":    base64.StdEncoding.EncodeToString(exEnc),
+		"RoleArn":       base64.StdEncoding.EncodeToString(rnEnc),
+		"SessionName":   base64.StdEncoding.EncodeToString(snEnc),
+		"SourceProfile": base64.StdEncoding.EncodeToString(spEnc),
 	}
 
 	// load existing data
@@ -68,13 +70,14 @@ func LoadCredentials(profile, key string) (*AWSSession, error) {
 	exp, _ := time.Parse(time.RFC3339, expStr)
 
 	return &AWSSession{
-		Profile:      profile,
-		AccessKey:    decryptField("AccessKey"),
-		SecretKey:    decryptField("SecretKey"),
-		SessionToken: decryptField("SessionToken"),
-		Expiration:   exp,
-		RoleArn:      decryptField("RoleArn"),
-		SessionName:  decryptField("SessionName"),
+		Profile:       profile,
+		AccessKey:     decryptField("AccessKey"),
+		SecretKey:     decryptField("SecretKey"),
+		SessionToken:  decryptField("SessionToken"),
+		Expiration:    exp,
+		RoleArn:       decryptField("RoleArn"),
+		SessionName:   decryptField("SessionName"),
+		SourceProfile: decryptField("SourceProfile"),
 	}, nil
 }
 
@@ -138,14 +141,15 @@ func ListAllSessions(secret string) ([]*AWSSession, error) {
 		}
 
 		sessions = append(sessions, &AWSSession{
-			Profile:      profile,
-			AccessKey:    decryptField("AccessKey"),
-			SecretKey:    decryptField("SecretKey"),
-			SessionToken: decryptField("SessionToken"),
-			Expiration:   exp,
-			RoleArn:      decryptField("RoleArn"),
-			SessionName:  decryptField("SessionName"),
-			Revoked:      revoked,
+			Profile:       profile,
+			AccessKey:     decryptField("AccessKey"),
+			SecretKey:     decryptField("SecretKey"),
+			SessionToken:  decryptField("SessionToken"),
+			Expiration:    exp,
+			RoleArn:       decryptField("RoleArn"),
+			SessionName:   decryptField("SessionName"),
+			SourceProfile: decryptField("SourceProfile"),
+			Revoked:       revoked,
 		})
 	}
 

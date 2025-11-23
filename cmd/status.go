@@ -59,7 +59,7 @@ var statusCmd = &cobra.Command{
 			fmt.Printf("%-15s %-40s %-20s %-12s %s%-8s%s\n",
 				s.Profile,
 				s.RoleArn,
-				s.Expiration.Format("2006-01-02 15:04:05"),
+				s.Expiration.Local().Format("2006-01-02 15:04:05"),
 				remaining.Round(time.Second),
 				statusColor,
 				status,

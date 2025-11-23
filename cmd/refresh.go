@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/config"
-	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 	"github.com/chukul/cloudctl/internal"
 	"github.com/spf13/cobra"
@@ -53,18 +52,20 @@ func refreshSingleSession(profile string) {
 		return
 	}
 
-	// Use current session credentials to assume role again
+	// Check if source profile is available
+	if session.SourceProfile == "" {
+		fmt.Printf("⚠️  No source profile stored. Please re-login to enable refresh.\n")
+		return
+	}
+
+	// Use source profile credentials to assume role again
 	ctx := context.TODO()
 	cfg, err := config.LoadDefaultConfig(ctx,
 		config.WithRegion(region),
-		config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(
-			session.AccessKey,
-			session.SecretKey,
-			session.SessionToken,
-		)),
+		config.WithSharedConfigProfile(session.SourceProfile),
 	)
 	if err != nil {
-		fmt.Printf("❌ Failed to configure AWS SDK: %v\n", err)
+		fmt.Printf("❌ Failed to load source profile '%s': %v\n", session.SourceProfile, err)
 		return
 	}
 
@@ -86,12 +87,13 @@ func refreshSingleSession(profile string) {
 	// Update session with new credentials
 	expiration := *roleResult.Credentials.Expiration
 	newSession := &internal.AWSSession{
-		Profile:      profile,
-		AccessKey:    *roleResult.Credentials.AccessKeyId,
-		SecretKey:    *roleResult.Credentials.SecretAccessKey,
-		SessionToken: *roleResult.Credentials.SessionToken,
-		Expiration:   expiration,
-		RoleArn:      session.RoleArn,
+		Profile:       profile,
+		AccessKey:     *roleResult.Credentials.AccessKeyId,
+		SecretKey:     *roleResult.Credentials.SecretAccessKey,
+		SessionToken:  *roleResult.Credentials.SessionToken,
+		Expiration:    expiration,
+		RoleArn:       session.RoleArn,
+		SourceProfile: session.SourceProfile,
 	}
 
 	// Save refreshed session
@@ -104,7 +106,7 @@ func refreshSingleSession(profile string) {
 	fmt.Printf("✅ Session refreshed successfully\n")
 	fmt.Printf("   Profile: %s\n", profile)
 	fmt.Printf("   Role: %s\n", session.RoleArn)
-	fmt.Printf("   Expires: %s (%v remaining)\n", expiration.Format("2006-01-02 15:04:05"), remaining)
+	fmt.Printf("   Expires: %s (%v remaining)\n", expiration.Local().Format("2006-01-02 15:04:05"), remaining)
 }
 
 func refreshAllSessions() {
@@ -136,20 +138,23 @@ func refreshAllSessions() {
 			continue
 		}
 
+		// Skip if no source profile
+		if s.SourceProfile == "" {
+			fmt.Printf("⏭️  Skipping '%s' (no source profile stored)\n", s.Profile)
+			skipped++
+			continue
+		}
+
 		// Refresh the session
 		fmt.Printf("\n🔄 Refreshing '%s'...\n", s.Profile)
 		
 		ctx := context.TODO()
 		cfg, err := config.LoadDefaultConfig(ctx,
 			config.WithRegion(region),
-			config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(
-				s.AccessKey,
-				s.SecretKey,
-				s.SessionToken,
-			)),
+			config.WithSharedConfigProfile(s.SourceProfile),
 		)
 		if err != nil {
-			fmt.Printf("❌ Failed to configure AWS SDK: %v\n", err)
+			fmt.Printf("❌ Failed to load source profile '%s': %v\n", s.SourceProfile, err)
 			failed++
 			continue
 		}
@@ -171,12 +176,13 @@ func refreshAllSessions() {
 
 		expiration := *roleResult.Credentials.Expiration
 		newSession := &internal.AWSSession{
-			Profile:      s.Profile,
-			AccessKey:    *roleResult.Credentials.AccessKeyId,
-			SecretKey:    *roleResult.Credentials.SecretAccessKey,
-			SessionToken: *roleResult.Credentials.SessionToken,
-			Expiration:   expiration,
-			RoleArn:      s.RoleArn,
+			Profile:       s.Profile,
+			AccessKey:     *roleResult.Credentials.AccessKeyId,
+			SecretKey:     *roleResult.Credentials.SecretAccessKey,
+			SessionToken:  *roleResult.Credentials.SessionToken,
+			Expiration:    expiration,
+			RoleArn:       s.RoleArn,
+			SourceProfile: s.SourceProfile,
 		}
 
 		if err := internal.SaveCredentials(s.Profile, newSession, refreshSecret); err != nil {
@@ -185,7 +191,7 @@ func refreshAllSessions() {
 			continue
 		}
 
-		fmt.Printf("✅ Refreshed successfully (expires: %s)\n", expiration.Format("2006-01-02 15:04:05"))
+		fmt.Printf("✅ Refreshed successfully (expires: %s)\n", expiration.Local().Format("2006-01-02 15:04:05"))
 		refreshed++
 	}
 
