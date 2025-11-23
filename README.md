@@ -225,6 +225,28 @@ Display current session info for shell prompt integration.
 **Flags:**
 - `--secret` - Encryption key to decrypt credentials (or set CLOUDCTL_SECRET env var)
 
+### `refresh`
+
+Refresh AWS session credentials before expiration.
+
+**Flags:**
+- `--profile` - Profile to refresh (required unless using --all)
+- `--all` - Refresh all active sessions
+- `--secret` - Encryption key to decrypt credentials (or set CLOUDCTL_SECRET env var)
+
+**Usage:**
+```bash
+# Refresh single profile
+cloudctl refresh --profile prod-admin --secret "your-secret"
+
+# Refresh all active sessions
+cloudctl refresh --all --secret "your-secret"
+
+# With environment variable
+export CLOUDCTL_SECRET="your-secret"
+cloudctl refresh --all
+```
+
 ### `logout`
 
 Remove stored credentials.
