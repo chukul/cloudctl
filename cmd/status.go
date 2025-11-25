@@ -35,8 +35,8 @@ var statusCmd = &cobra.Command{
 			return
 		}
 
-		fmt.Printf("%-15s %-40s %-20s %-12s %-8s\n", "PROFILE", "ROLE ARN", "EXPIRATION", "REMAINING", "STATUS")
-		fmt.Println(strings.Repeat("-", 100))
+		fmt.Printf("%-16s %-65s %-20s %-12s %-8s\n", "PROFILE", "ROLE ARN", "EXPIRATION", "REMAINING", "STATUS")
+		fmt.Println(strings.Repeat("-", 125))
 
 		now := time.Now()
 		for _, s := range sessions {
@@ -57,7 +57,7 @@ var statusCmd = &cobra.Command{
 				statusColor = colorGreen
 			}
 
-			fmt.Printf("%-15s %-40s %-20s %-12s %s%-8s%s\n",
+			fmt.Printf("%-16s %-65s %-20s %-12s %s%-8s%s\n",
 				s.Profile,
 				s.RoleArn,
 				s.Expiration.Local().Format("2006-01-02 15:04:05"),
