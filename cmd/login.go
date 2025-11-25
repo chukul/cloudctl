@@ -7,6 +7,8 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
+	"syscall"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -15,6 +17,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 	"github.com/chukul/cloudctl/internal"
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 )
 
 var (
@@ -86,8 +89,12 @@ var loginCmd = &cobra.Command{
 		if mfaArn != "" {
 			fmt.Printf("🔒 MFA device detected: %s\n", mfaArn)
 			fmt.Print("Enter MFA code: ")
-			var mfaCode string
-			fmt.Scanln(&mfaCode)
+			mfaCodeBytes, err := term.ReadPassword(int(syscall.Stdin))
+			fmt.Println() // New line after masked input
+			if err != nil {
+				log.Fatalf("❌ Failed to read MFA code: %v", err)
+			}
+			mfaCode := strings.TrimSpace(string(mfaCodeBytes))
 
 			stsClient := sts.NewFromConfig(cfg)
 			input := &sts.GetSessionTokenInput{
