@@ -70,7 +70,25 @@ After setup, you get:
 
 ## Quick Start
 
-### 1. Login and Assume Role
+### 1. MFA Session (Recommended for Multiple Roles)
+
+If you need to assume multiple roles with MFA, get an MFA session first:
+
+```bash
+# Step 1: Get MFA session once (valid for 12 hours)
+cloudctl mfa-login \
+  --source default \
+  --profile mfa-session \
+  --mfa arn:aws:iam::123456789012:mfa/username
+# Enter MFA code when prompted
+
+# Step 2: Use MFA session to assume multiple roles (no MFA needed!)
+cloudctl login --source mfa-session --profile prod-admin --role arn:aws:iam::123456789012:role/AdminRole
+cloudctl login --source mfa-session --profile dev-readonly --role arn:aws:iam::123456789012:role/ReadOnlyRole
+cloudctl login --source mfa-session --profile staging --role arn:aws:iam::987654321098:role/StagingRole
+```
+
+### 2. Login and Assume Role
 
 Assume an IAM role and store the credentials securely:
 
@@ -92,7 +110,7 @@ cloudctl login \
   --secret "1234567890ABCDEF1234567890ABCDEF"
 ```
 
-**With MFA:**
+**With MFA (single role):**
 ```bash
 cloudctl login \
   --source default \
@@ -102,7 +120,7 @@ cloudctl login \
   --secret "1234567890ABCDEF1234567890ABCDEF"
 ```
 
-### 2. View Stored Sessions
+### 3. View Stored Sessions
 
 List all stored sessions with their status:
 
@@ -117,7 +135,7 @@ PROFILE         ROLE ARN                                 EXPIRATION           RE
 prod-admin      arn:aws:iam::123456789012:role/AdminRole 2025-11-20 10:30:00  45m30s       ACTIVE
 ```
 
-### 3. Quick Switch Between Profiles
+### 4. Quick Switch Between Profiles
 
 Fast profile switching with one command:
 
@@ -142,7 +160,7 @@ unset AWS_PROFILE
 eval $(cloudctl switch prod-admin)
 ```
 
-### 4. Open AWS Console
+### 5. Open AWS Console
 
 Generate and open AWS Console in your browser:
 
@@ -154,7 +172,7 @@ cloudctl console --profile prod-admin --secret "1234567890ABCDEF1234567890ABCDEF
 cloudctl console --profile prod-admin --secret "1234567890ABCDEF1234567890ABCDEF" --region us-east-1 --open
 ```
 
-### 5. Logout
+### 6. Logout
 
 Remove stored credentials:
 
@@ -168,12 +186,33 @@ cloudctl logout --all
 
 ## Commands Reference
 
+### `mfa-login`
+
+Get MFA session token to use for multiple role assumptions.
+
+**Flags:**
+- `--source` - Source AWS CLI profile for base credentials (required)
+- `--profile` - Name to store the MFA session as (required)
+- `--mfa` - MFA device ARN (required)
+- `--secret` - Encryption key for credential storage (or set CLOUDCTL_SECRET env var)
+- `--duration` - Session duration in seconds (default: 43200 = 12 hours, max: 129600 = 36 hours)
+
+**Usage:**
+```bash
+# Get MFA session (valid for 12 hours)
+cloudctl mfa-login --source default --profile mfa-session --mfa arn:aws:iam::123:mfa/user
+
+# Use MFA session to assume roles without re-entering MFA
+cloudctl login --source mfa-session --profile role1 --role arn:aws:iam::123:role/Role1
+cloudctl login --source mfa-session --profile role2 --role arn:aws:iam::456:role/Role2
+```
+
 ### `login`
 
 Assume an AWS role and store credentials locally.
 
 **Flags:**
-- `--source` - Source AWS CLI profile for base credentials (required)
+- `--source` - Source AWS CLI profile or cloudctl session for base credentials (required)
 - `--profile` - Name to store the new session as (required)
 - `--role` - Target IAM role ARN to assume (required)
 - `--mfa` - MFA device ARN (optional)

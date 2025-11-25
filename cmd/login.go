@@ -44,13 +44,42 @@ var loginCmd = &cobra.Command{
 		fmt.Printf("🔐 Assuming role %s using source profile %s...\n", roleArn, sourceProfile)
 
 		ctx := context.TODO()
+		var cfg aws.Config
+		var err error
 
-		// Load source profile config
-		cfg, err := config.LoadDefaultConfig(ctx, 
-			config.WithSharedConfigProfile(sourceProfile),
-			config.WithRegion(region))
-		if err != nil {
-			log.Fatalf("Failed to load source profile %s: %v", sourceProfile, err)
+		// Check if source profile is a cloudctl session first
+		if secretKey != "" {
+			session, sessionErr := internal.LoadCredentials(sourceProfile, secretKey)
+			if sessionErr == nil {
+				// Source is a cloudctl session, use its credentials
+				cfg, err = config.LoadDefaultConfig(ctx,
+					config.WithRegion(region),
+					config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(
+						session.AccessKey,
+						session.SecretKey,
+						session.SessionToken,
+					)),
+				)
+				if err != nil {
+					log.Fatalf("Failed to configure AWS SDK with session credentials: %v", err)
+				}
+			} else {
+				// Source is an AWS CLI profile
+				cfg, err = config.LoadDefaultConfig(ctx,
+					config.WithSharedConfigProfile(sourceProfile),
+					config.WithRegion(region))
+				if err != nil {
+					log.Fatalf("Failed to load source profile %s: %v", sourceProfile, err)
+				}
+			}
+		} else {
+			// No secret provided, try AWS CLI profile
+			cfg, err = config.LoadDefaultConfig(ctx,
+				config.WithSharedConfigProfile(sourceProfile),
+				config.WithRegion(region))
+			if err != nil {
+				log.Fatalf("Failed to load source profile %s: %v", sourceProfile, err)
+			}
 		}
 
 		// Handle MFA if provided
