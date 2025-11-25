@@ -39,6 +39,14 @@ var consoleCmd = &cobra.Command{
 			return
 		}
 
+		// Check if this is an MFA session (can't be used for console federation)
+		if s.RoleArn == "MFA-Session" {
+			fmt.Println("❌ MFA sessions cannot be used for console access.")
+			fmt.Println("💡 Use a role that was assumed from the MFA session instead:")
+			fmt.Println("   cloudctl console --profile <role-profile> --open")
+			return
+		}
+
 		// Create session JSON
 		sessionJSON := map[string]string{
 			"sessionId":    s.AccessKey,
