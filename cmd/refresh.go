@@ -6,7 +6,9 @@ import (
 	"os"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 	"github.com/chukul/cloudctl/internal"
 	"github.com/spf13/cobra"
@@ -58,15 +60,42 @@ func refreshSingleSession(profile string) {
 		return
 	}
 
+	// Skip MFA sessions (they can't be refreshed by assuming a role)
+	if session.RoleArn == "MFA-Session" {
+		fmt.Printf("⚠️  MFA sessions cannot be refreshed. Please run mfa-login again.\n")
+		return
+	}
+
 	// Use source profile credentials to assume role again
 	ctx := context.TODO()
-	cfg, err := config.LoadDefaultConfig(ctx,
-		config.WithRegion(region),
-		config.WithSharedConfigProfile(session.SourceProfile),
-	)
-	if err != nil {
-		fmt.Printf("❌ Failed to load source profile '%s': %v\n", session.SourceProfile, err)
-		return
+	var cfg aws.Config
+	
+	// Check if source profile is a cloudctl session
+	sourceSession, sourceErr := internal.LoadCredentials(session.SourceProfile, refreshSecret)
+	if sourceErr == nil {
+		// Source is a cloudctl session, use its credentials
+		cfg, err = config.LoadDefaultConfig(ctx,
+			config.WithRegion(region),
+			config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(
+				sourceSession.AccessKey,
+				sourceSession.SecretKey,
+				sourceSession.SessionToken,
+			)),
+		)
+		if err != nil {
+			fmt.Printf("❌ Failed to configure AWS SDK with session credentials: %v\n", err)
+			return
+		}
+	} else {
+		// Source is an AWS CLI profile
+		cfg, err = config.LoadDefaultConfig(ctx,
+			config.WithRegion(region),
+			config.WithSharedConfigProfile(session.SourceProfile),
+		)
+		if err != nil {
+			fmt.Printf("❌ Failed to load source profile '%s': %v\n", session.SourceProfile, err)
+			return
+		}
 	}
 
 	// Assume role again
@@ -145,18 +174,47 @@ func refreshAllSessions() {
 			continue
 		}
 
+		// Skip MFA sessions
+		if s.RoleArn == "MFA-Session" {
+			fmt.Printf("⏭️  Skipping '%s' (MFA session, use mfa-login to renew)\n", s.Profile)
+			skipped++
+			continue
+		}
+
 		// Refresh the session
 		fmt.Printf("\n🔄 Refreshing '%s'...\n", s.Profile)
 		
 		ctx := context.TODO()
-		cfg, err := config.LoadDefaultConfig(ctx,
-			config.WithRegion(region),
-			config.WithSharedConfigProfile(s.SourceProfile),
-		)
-		if err != nil {
-			fmt.Printf("❌ Failed to load source profile '%s': %v\n", s.SourceProfile, err)
-			failed++
-			continue
+		var cfg aws.Config
+		var err error
+		
+		// Check if source profile is a cloudctl session
+		sourceSession, sourceErr := internal.LoadCredentials(s.SourceProfile, refreshSecret)
+		if sourceErr == nil {
+			// Source is a cloudctl session, use its credentials
+			cfg, err = config.LoadDefaultConfig(ctx,
+				config.WithRegion(region),
+				config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(
+					sourceSession.AccessKey,
+					sourceSession.SecretKey,
+					sourceSession.SessionToken,
+				)),
+			)
+			if err != nil {
+				fmt.Printf("❌ Failed to configure AWS SDK with session credentials: %v\n", err)
+				failed++
+				continue
+			}
+		} else {
+			// Source is an AWS CLI profile
+			cfg, err = config.LoadDefaultConfig(ctx,
+				config.WithRegion(region),
+				config.WithSharedConfigProfile(s.SourceProfile))
+			if err != nil {
+				fmt.Printf("❌ Failed to load source profile '%s': %v\n", s.SourceProfile, err)
+				failed++
+				continue
+			}
 		}
 
 		stsClient := sts.NewFromConfig(cfg)
