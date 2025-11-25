@@ -135,7 +135,7 @@ func init() {
 	loginCmd.Flags().StringVar(&profile, "profile", "", "Name to store the new session as")
 	loginCmd.Flags().StringVar(&roleArn, "role", "", "Target IAM role ARN to assume")
 	loginCmd.Flags().StringVar(&mfaArn, "mfa", "", "MFA device ARN (optional)")
-	loginCmd.Flags().StringVar(&secretKey, "secret", "", "Optional secret for encryption")
+	loginCmd.Flags().StringVar(&secretKey, "secret", os.Getenv("CLOUDCTL_SECRET"), "Optional secret for encryption (or set CLOUDCTL_SECRET env var)")
 	loginCmd.Flags().StringVar(&region, "region", "ap-southeast-1", "AWS region (default: ap-southeast-1)")
 	rootCmd.AddCommand(loginCmd)
 }

@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -70,6 +71,6 @@ var statusCmd = &cobra.Command{
 }
 
 func init() {
-	statusCmd.Flags().StringVar(&statusSecret, "secret", "", "Secret key for session decryption")
+	statusCmd.Flags().StringVar(&statusSecret, "secret", os.Getenv("CLOUDCTL_SECRET"), "Secret key for session decryption (or set CLOUDCTL_SECRET env var)")
 	rootCmd.AddCommand(statusCmd)
 }

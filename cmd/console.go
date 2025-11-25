@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"os/exec"
 	"runtime"
 
@@ -115,7 +116,7 @@ func openBrowser(url string) error {
 
 func init() {
 	consoleCmd.Flags().StringVar(&consoleProfile, "profile", "", "Profile to generate console URL for")
-	consoleCmd.Flags().StringVar(&consoleSecret, "secret", "", "Secret key for decryption")
+	consoleCmd.Flags().StringVar(&consoleSecret, "secret", os.Getenv("CLOUDCTL_SECRET"), "Secret key for decryption (or set CLOUDCTL_SECRET env var)")
 	consoleCmd.Flags().BoolVar(&consoleOpen, "open", false, "Automatically open URL in browser")
 	consoleCmd.Flags().StringVar(&consoleRegion, "region", "ap-southeast-1", "AWS region for console (default: ap-southeast-1)")
 	rootCmd.AddCommand(consoleCmd)
