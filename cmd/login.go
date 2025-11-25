@@ -113,7 +113,7 @@ var loginCmd = &cobra.Command{
 
 		// Assume target IAM role
 		stsClient := sts.NewFromConfig(cfg)
-		sessionName := fmt.Sprintf("cloudctl-%d", time.Now().Unix())
+		sessionName := profile // Use profile name as session name
 		duration := int32(3600)
 
 		roleResult, err := stsClient.AssumeRole(ctx, &sts.AssumeRoleInput{

@@ -100,7 +100,7 @@ func refreshSingleSession(profile string) {
 
 	// Assume role again
 	stsClient := sts.NewFromConfig(cfg)
-	sessionName := fmt.Sprintf("cloudctl-%d", time.Now().Unix())
+	sessionName := profile // Use profile name as session name
 	duration := int32(3600)
 
 	roleResult, err := stsClient.AssumeRole(ctx, &sts.AssumeRoleInput{
@@ -218,7 +218,7 @@ func refreshAllSessions() {
 		}
 
 		stsClient := sts.NewFromConfig(cfg)
-		sessionName := fmt.Sprintf("cloudctl-%d", time.Now().Unix())
+		sessionName := s.Profile // Use profile name as session name
 		duration := int32(3600)
 
 		roleResult, err := stsClient.AssumeRole(ctx, &sts.AssumeRoleInput{
