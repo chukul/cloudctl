@@ -17,12 +17,15 @@ A lightweight CLI tool for securely managing AWS AssumeRole sessions with MFA su
 - 🌐 **Console Access** - Generate AWS Console sign-in URLs from stored sessions
 - 📦 **Session Management** - List, export, and manage multiple AWS sessions
 - 🔑 **MFA Support** - Built-in multi-factor authentication support
+- 🔄 **MFA Session Caching** - Enter MFA once, assume unlimited roles for 12 hours
 - 🌍 **Region Support** - Default region configuration (ap-southeast-1)
 - 🚀 **Quick Switch** - Fast profile switching with one command
 - 🎨 **Color-Coded Status** - Visual indicators for session health (active/expiring/expired)
 - 💻 **Shell Integration** - Display current session in your shell prompt
 - 🔄 **Auto Refresh** - Renew sessions before they expire with bulk operations
 - ⚡ **Shell Init** - One-command setup for seamless shell integration
+- 🕐 **Local Timezone** - All timestamps display in your local timezone
+- 🏷️ **Static Session Names** - Profile names shown in AWS Console instead of random IDs
 
 ## Installation
 
@@ -251,9 +254,11 @@ Generate AWS Console sign-in URL from stored session.
 
 **Flags:**
 - `--profile` - Profile to generate console URL for (required)
-- `--secret` - Encryption key to decrypt credentials (required)
+- `--secret` - Encryption key to decrypt credentials (or set CLOUDCTL_SECRET env var)
 - `--region` - AWS region for console (default: ap-southeast-1)
 - `--open` - Automatically open URL in browser
+
+**Note:** MFA sessions cannot be used for console access. Use an assumed role profile instead.
 
 ### `list`
 
@@ -305,6 +310,14 @@ Refresh AWS session credentials before expiration.
 cloudctl refresh --profile prod-admin --secret "your-secret"
 
 # Refresh all active sessions
+cloudctl refresh --all --secret "your-secret"
+
+# With environment variable
+export CLOUDCTL_SECRET="your-secret"
+cloudctl refresh --all
+```
+
+**Note:** MFA sessions cannot be refreshed. Use `mfa-login` to renew them.
 cloudctl refresh --all --secret "your-secret"
 
 # With environment variable
