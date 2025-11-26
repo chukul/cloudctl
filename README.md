@@ -14,8 +14,8 @@ A lightweight CLI tool for securely managing AWS AssumeRole sessions with MFA su
 
 - 🔐 **Secure Credential Storage** - Encrypt AWS credentials with AES-256-GCM
 - 🎯 **AssumeRole Support** - Easily assume IAM roles with MFA
-- 🌐 **Console Access** - Generate AWS Console sign-in URLs from stored sessions
-- 📦 **Session Management** - List, export, and manage multiple AWS sessions
+- 🌐 **Console Access** - Generate and auto-open AWS Console sign-in URLs
+- 📦 **Session Management** - List, switch, and manage multiple AWS sessions
 - 🔑 **MFA Support** - Built-in multi-factor authentication support
 - 🔄 **MFA Session Caching** - Enter MFA once, assume unlimited roles for 12 hours
 - 🌍 **Region Support** - Default region configuration (ap-southeast-1)
@@ -26,7 +26,7 @@ A lightweight CLI tool for securely managing AWS AssumeRole sessions with MFA su
 - ⚡ **Shell Init** - One-command setup for seamless shell integration
 - 🕐 **Local Timezone** - All timestamps display in your local timezone
 - 🏷️ **Static Session Names** - Profile names shown in AWS Console instead of random IDs
-- 🔒 **Masked MFA Input** - Asterisk display for MFA codes with backspace support
+- 🔒 **Masked MFA Input** - Asterisk display (`******`) for MFA codes with backspace support
 
 ## Installation
 
@@ -71,6 +71,7 @@ After setup, you get:
 - `ccst` - Alias for cloudctl status
 - `ccr` - Alias for cloudctl refresh
 - `ccc` - Alias for cloudctl console
+- Shell prompt showing current session and remaining time
 
 ## Quick Start
 
@@ -84,7 +85,7 @@ cloudctl mfa-login \
   --source default \
   --profile mfa-session \
   --mfa arn:aws:iam::123456789012:mfa/username
-# Enter MFA code when prompted
+# Enter MFA code when prompted (displays as ******)
 
 # Step 2: Use MFA session to assume multiple roles (no MFA needed!)
 cloudctl login --source mfa-session --profile prod-admin --role arn:aws:iam::123456789012:role/AdminRole
@@ -146,7 +147,13 @@ cloudctl status --secret "1234567890ABCDEF1234567890ABCDEF"
 PROFILE         ROLE ARN                                 EXPIRATION           REMAINING    STATUS  
 ----------------------------------------------------------------------------------------------------
 prod-admin      arn:aws:iam::123456789012:role/AdminRole 2025-11-20 10:30:00  45m30s       ACTIVE
+mfa-session                                              2025-11-20 22:30:00  11h45m       ACTIVE
 ```
+
+**Status Colors:**
+- 🟢 Green (ACTIVE) - Session has more than 15 minutes remaining
+- 🟡 Yellow (EXPIRING) - Session expires in 15 minutes or less
+- 🔴 Red (EXPIRED) - Session has expired
 
 ### 4. Quick Switch Between Profiles
 
@@ -160,8 +167,8 @@ export CLOUDCTL_SECRET="1234567890ABCDEF1234567890ABCDEF"
 eval $(cloudctl switch prod-admin)
 eval $(cloudctl switch dev-readonly)
 
-# Or without environment variable
-eval $(cloudctl switch prod-admin --secret "1234567890ABCDEF1234567890ABCDEF")
+# Or use the shell function (if init is configured)
+ccs prod-admin
 
 # Verify
 aws sts get-caller-identity
@@ -183,9 +190,31 @@ cloudctl console --profile prod-admin --secret "1234567890ABCDEF1234567890ABCDEF
 
 # Open console in specific region
 cloudctl console --profile prod-admin --secret "1234567890ABCDEF1234567890ABCDEF" --region us-east-1 --open
+
+# Or use the alias (if init is configured)
+ccc --profile prod-admin --open
 ```
 
-### 6. Logout
+**Note:** MFA sessions cannot be used for console access. Use an assumed role profile instead.
+
+### 6. Refresh Sessions
+
+Refresh sessions before they expire:
+
+```bash
+# Refresh single profile
+cloudctl refresh --profile prod-admin --secret "1234567890ABCDEF1234567890ABCDEF"
+
+# Refresh all active sessions
+cloudctl refresh --all --secret "1234567890ABCDEF1234567890ABCDEF"
+
+# Or use the alias (if init is configured)
+ccr --all
+```
+
+**Note:** MFA sessions cannot be refreshed. Use `mfa-login` to create a new one.
+
+### 7. Logout
 
 Remove stored credentials:
 
@@ -229,21 +258,35 @@ Assume an AWS role and store credentials locally.
 - `--profile` - Name to store the new session as (required)
 - `--role` - Target IAM role ARN to assume (required)
 - `--mfa` - MFA device ARN (optional)
-- `--secret` - Encryption key for credential storage (optional but recommended)
+- `--secret` - Encryption key for credential storage (or set CLOUDCTL_SECRET env var)
 - `--region` - AWS region (default: ap-southeast-1)
 - `--open` - Automatically open AWS Console after successful login
+
+**Usage:**
+```bash
+# Basic login
+cloudctl login --source default --profile prod --role arn:aws:iam::123:role/Admin
+
+# With MFA
+cloudctl login --source default --profile prod --role arn:aws:iam::123:role/Admin --mfa arn:aws:iam::123:mfa/user
+
+# With auto-open console
+cloudctl login --source mfa-session --profile prod --role arn:aws:iam::123:role/Admin --open
+```
 
 ### `status`
 
 Show all stored AWS sessions with color-coded expiration status.
 
 **Flags:**
-- `--secret` - Encryption key to decrypt credentials
+- `--secret` - Encryption key to decrypt credentials (or set CLOUDCTL_SECRET env var)
 
-**Status Colors:**
-- 🟢 Green (ACTIVE) - Session has more than 15 minutes remaining
-- 🟡 Yellow (EXPIRING) - Session expires in 15 minutes or less
-- 🔴 Red (EXPIRED) - Session has expired
+**Usage:**
+```bash
+cloudctl status
+# or
+ccst  # if shell integration is configured
+```
 
 ### `switch`
 
@@ -257,6 +300,9 @@ Quick switch to a profile and export credentials in one command.
 ```bash
 export CLOUDCTL_SECRET="your-secret"
 eval $(cloudctl switch prod-admin)
+
+# Or use the shell function
+ccs prod-admin
 ```
 
 ### `console`
@@ -269,11 +315,50 @@ Generate AWS Console sign-in URL from stored session.
 - `--region` - AWS region for console (default: ap-southeast-1)
 - `--open` - Automatically open URL in browser
 
+**Usage:**
+```bash
+# Generate and open console
+cloudctl console --profile prod-admin --open
+
+# Or use the alias
+ccc --profile prod-admin --open
+```
+
 **Note:** MFA sessions cannot be used for console access. Use an assumed role profile instead.
+
+### `refresh`
+
+Refresh AWS session credentials before expiration.
+
+**Flags:**
+- `--profile` - Profile to refresh (required unless using --all)
+- `--all` - Refresh all active sessions
+- `--secret` - Encryption key to decrypt credentials (or set CLOUDCTL_SECRET env var)
+
+**Usage:**
+```bash
+# Refresh single profile
+cloudctl refresh --profile prod-admin
+
+# Refresh all active sessions
+cloudctl refresh --all
+
+# Or use the alias
+ccr --all
+```
+
+**Note:** 
+- MFA sessions cannot be refreshed. Use `mfa-login` to create a new one.
+- Only sessions with source profile information can be refreshed.
 
 ### `list`
 
 List all stored profile names.
+
+**Usage:**
+```bash
+cloudctl list
+```
 
 ### `init`
 
@@ -289,9 +374,12 @@ cloudctl init
 ```
 
 **What it provides:**
-- `ccs` function for quick switching without eval
-- Aliases for common commands (ccl, ccst, ccr, ccc)
-- Shell prompt integration
+- `ccs <profile>` - Quick switch function without eval
+- `ccl` - Alias for cloudctl login
+- `ccst` - Alias for cloudctl status
+- `ccr` - Alias for cloudctl refresh
+- `ccc` - Alias for cloudctl console
+- Shell prompt integration showing current session
 - CLOUDCTL_SECRET environment variable setup
 
 ### `prompt`
@@ -306,34 +394,13 @@ Display current session info for shell prompt integration.
 **Flags:**
 - `--secret` - Encryption key to decrypt credentials (or set CLOUDCTL_SECRET env var)
 
-### `refresh`
-
-Refresh AWS session credentials before expiration.
-
-**Flags:**
-- `--profile` - Profile to refresh (required unless using --all)
-- `--all` - Refresh all active sessions
-- `--secret` - Encryption key to decrypt credentials (or set CLOUDCTL_SECRET env var)
-
 **Usage:**
 ```bash
-# Refresh single profile
-cloudctl refresh --profile prod-admin --secret "your-secret"
+# In your shell prompt (PS1 or PROMPT)
+$(cloudctl prompt)
 
-# Refresh all active sessions
-cloudctl refresh --all --secret "your-secret"
-
-# With environment variable
-export CLOUDCTL_SECRET="your-secret"
-cloudctl refresh --all
-```
-
-**Note:** MFA sessions cannot be refreshed. Use `mfa-login` to renew them.
-cloudctl refresh --all --secret "your-secret"
-
-# With environment variable
-export CLOUDCTL_SECRET="your-secret"
-cloudctl refresh --all
+# Get detailed info
+cloudctl prompt info
 ```
 
 ### `logout`
@@ -343,6 +410,15 @@ Remove stored credentials.
 **Flags:**
 - `--profile` - Profile to remove
 - `--all` - Remove all profiles
+
+**Usage:**
+```bash
+# Remove specific profile
+cloudctl logout --profile prod-admin
+
+# Remove all profiles
+cloudctl logout --all
+```
 
 ## Configuration
 
@@ -359,14 +435,20 @@ CloudCtl uses AES-256-GCM encryption for storing credentials. Your encryption ke
 openssl rand -hex 16
 ```
 
+**Set as environment variable:**
+```bash
+export CLOUDCTL_SECRET="1234567890ABCDEF1234567890ABCDEF"
+```
+
 ### Storage Location
 
 Credentials are stored in:
 ```
-~/.cloudctl/credentials.json
+~/.cloudctl/credentials.json  # Encrypted credentials
+~/.cloudctl/sessions/         # Session files
 ```
 
-This file contains encrypted credentials and should be kept secure.
+These files contain encrypted credentials and should be kept secure.
 
 ## Security Best Practices
 
@@ -374,7 +456,8 @@ This file contains encrypted credentials and should be kept secure.
 2. **Don't Commit Secrets** - Never commit your encryption key or credentials
 3. **Rotate Sessions** - Regularly refresh your assumed role sessions
 4. **Use MFA** - Enable MFA for sensitive role assumptions
-5. **Limit Session Duration** - Use appropriate session durations (default: 1 hour)
+5. **Limit Session Duration** - Use appropriate session durations (default: 1 hour for roles, 12 hours for MFA)
+6. **Secure Storage** - Ensure `~/.cloudctl/` directory has proper permissions (0700)
 
 ## Troubleshooting
 
@@ -383,6 +466,7 @@ This file contains encrypted credentials and should be kept secure.
 This error occurs when `AWS_PROFILE` is set in your environment. Unset it:
 ```bash
 unset AWS_PROFILE
+eval $(cloudctl switch prod-admin)
 ```
 
 ### "Failed to load source profile"
@@ -390,6 +474,7 @@ unset AWS_PROFILE
 Ensure your source profile exists in `~/.aws/credentials`:
 ```bash
 cat ~/.aws/credentials
+aws configure list-profiles
 ```
 
 ### "Invalid secret key"
@@ -404,6 +489,18 @@ Check that:
 3. Your source credentials have permission to assume the role
 4. The role's trust policy allows your source identity
 
+### MFA Code Not Working
+
+- Ensure your device time is synchronized (MFA codes are time-based)
+- Wait for a fresh code if the current one is about to expire
+- Verify the MFA device ARN is correct
+
+### Console URL Not Opening
+
+- Check that you're using an assumed role profile (not an MFA session)
+- Verify the session hasn't expired
+- Ensure your browser is set as the default application for URLs
+
 ## Development
 
 ### Project Structure
@@ -412,20 +509,23 @@ Check that:
 cloudctl/
 ├── cmd/              # Command implementations
 │   ├── console.go    # Console sign-in command
-│   ├── export.go     # Export credentials command
+│   ├── init.go       # Shell integration command
 │   ├── list.go       # List profiles command
 │   ├── login.go      # Login/assume role command
 │   ├── logout.go     # Logout command
+│   ├── mfa-login.go  # MFA session command
+│   ├── prompt.go     # Shell prompt command
+│   ├── refresh.go    # Refresh session command
 │   ├── root.go       # Root command and CLI setup
-│   └── status.go     # Status command
+│   ├── status.go     # Status command
+│   ├── switch.go     # Quick switch command
+│   └── utils.go      # Shared utilities (MFA input)
 ├── internal/         # Internal packages
 │   ├── aws.go        # AWS SDK helpers
 │   ├── crypto.go     # Encryption/decryption
 │   ├── session.go    # Session types
 │   ├── storage.go    # Credential storage
 │   └── types.go      # Type definitions
-├── scripts/          # Helper scripts
-│   └── console-open.sh
 ├── go.mod
 ├── go.sum
 ├── main.go
