@@ -568,6 +568,11 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 This project is open source and available under the MIT License.
 
+## Author
+
+**Chuchai Kul**  
+Email: chuchaik@outlook.com
+
 ## Acknowledgments
 
 - Inspired by [Leapp](https://www.leapp.cloud/)
