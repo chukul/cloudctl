@@ -13,13 +13,15 @@ const logo = `
  / /   / / __ \/ / / / __  / /    / __/ / 
 / /___/ / /_/ / /_/ / /_/ / /___ / /_/ /  
 \____/_/\____/\__,_/\__,_/\____/ \__/_/   
-                                           
+
+A lightweight Leapp-like CLI for securely managing AWS AssumeRole sessions.
+Author: Chuchai Kul <chuchaik@outlook.com>
 `
 
 var rootCmd = &cobra.Command{
 	Use:   "cloudctl",
 	Short: "cloudctl is a CLI tool for managing AWS sessions and credentials",
-	Long:  logo + `A lightweight Leapp-like CLI for securely managing AWS AssumeRole sessions.`,
+	Long:  logo,
 }
 
 // Execute runs the CLI
