@@ -5,15 +5,12 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"strings"
-	"syscall"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 	"github.com/chukul/cloudctl/internal"
 	"github.com/spf13/cobra"
-	"golang.org/x/term"
 )
 
 var (
@@ -53,13 +50,7 @@ Use this session as source profile for subsequent role assumptions without re-en
 		}
 
 		// Prompt for MFA code (masked input)
-		fmt.Print("Enter MFA code: ")
-		mfaCodeBytes, err := term.ReadPassword(int(syscall.Stdin))
-		fmt.Println() // New line after masked input
-		if err != nil {
-			log.Fatalf("❌ Failed to read MFA code: %v", err)
-		}
-		mfaCode := strings.TrimSpace(string(mfaCodeBytes))
+		mfaCode := readMFACode()
 
 		// Get session token with MFA
 		stsClient := sts.NewFromConfig(cfg)

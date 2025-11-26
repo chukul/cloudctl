@@ -4,11 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
+	"net/http"
+	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
-	"strings"
-	"syscall"
+	"runtime"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -17,7 +20,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 	"github.com/chukul/cloudctl/internal"
 	"github.com/spf13/cobra"
-	"golang.org/x/term"
 )
 
 var (
@@ -27,6 +29,7 @@ var (
 	mfaArn        string
 	secretKey     string
 	region        string
+	openConsole   bool
 	sessionDir    = filepath.Join(os.Getenv("HOME"), ".cloudctl", "sessions")
 )
 
@@ -88,13 +91,7 @@ var loginCmd = &cobra.Command{
 		// Handle MFA if provided
 		if mfaArn != "" {
 			fmt.Printf("🔒 MFA device detected: %s\n", mfaArn)
-			fmt.Print("Enter MFA code: ")
-			mfaCodeBytes, err := term.ReadPassword(int(syscall.Stdin))
-			fmt.Println() // New line after masked input
-			if err != nil {
-				log.Fatalf("❌ Failed to read MFA code: %v", err)
-			}
-			mfaCode := strings.TrimSpace(string(mfaCodeBytes))
+			mfaCode := readMFACode()
 
 			stsClient := sts.NewFromConfig(cfg)
 			input := &sts.GetSessionTokenInput{
@@ -163,7 +160,72 @@ var loginCmd = &cobra.Command{
 		fmt.Printf("   Source: %s\n", sourceProfile)
 		fmt.Printf("   Expires: %s (%v remaining)\n",
 			expiration.Local().Format("2006-01-02 15:04:05"), remaining)
+
+		// Open console if requested
+		if openConsole {
+			fmt.Println("\n🌐 Opening AWS Console...")
+			if err := openAWSConsole(session, region); err != nil {
+				fmt.Printf("⚠️  Failed to open console: %v\n", err)
+				fmt.Println("💡 You can open it manually with: cloudctl console --profile", profile, "--open")
+			}
+		}
 	},
+}
+
+func openAWSConsole(session *internal.AWSSession, consoleRegion string) error {
+	// Create session JSON
+	sessionJSON := map[string]string{
+		"sessionId":    session.AccessKey,
+		"sessionKey":   session.SecretKey,
+		"sessionToken": session.SessionToken,
+	}
+
+	sessionData, _ := json.Marshal(sessionJSON)
+
+	// Get signin token
+	federationURL := "https://signin.aws.amazon.com/federation"
+	params := url.Values{}
+	params.Add("Action", "getSigninToken")
+	params.Add("Session", string(sessionData))
+
+	resp, err := http.Get(fmt.Sprintf("%s?%s", federationURL, params.Encode()))
+	if err != nil {
+		return fmt.Errorf("failed to get sign-in token: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	var tokenResp map[string]string
+	if err := json.Unmarshal(body, &tokenResp); err != nil {
+		return fmt.Errorf("failed to parse token response: %w", err)
+	}
+
+	signinToken := tokenResp["SigninToken"]
+	if signinToken == "" {
+		return fmt.Errorf("failed to get sign-in token")
+	}
+
+	// Build console URL
+	destination := "https://console.aws.amazon.com/"
+	if consoleRegion != "" {
+		destination = fmt.Sprintf("https://%s.console.aws.amazon.com/console/home?region=%s", consoleRegion, consoleRegion)
+	}
+	consoleURL := fmt.Sprintf("%s?Action=login&Issuer=cloudctl&Destination=%s&SigninToken=%s",
+		federationURL, url.QueryEscape(destination), signinToken)
+
+	// Open in browser
+	var cmd *exec.Cmd
+	switch runtime.GOOS {
+	case "darwin":
+		cmd = exec.Command("open", consoleURL)
+	case "linux":
+		cmd = exec.Command("xdg-open", consoleURL)
+	case "windows":
+		cmd = exec.Command("rundll32", "url.dll,FileProtocolHandler", consoleURL)
+	default:
+		return fmt.Errorf("unsupported platform")
+	}
+	return cmd.Start()
 }
 
 func init() {
@@ -173,5 +235,6 @@ func init() {
 	loginCmd.Flags().StringVar(&mfaArn, "mfa", "", "MFA device ARN (optional)")
 	loginCmd.Flags().StringVar(&secretKey, "secret", os.Getenv("CLOUDCTL_SECRET"), "Optional secret for encryption (or set CLOUDCTL_SECRET env var)")
 	loginCmd.Flags().StringVar(&region, "region", "ap-southeast-1", "AWS region (default: ap-southeast-1)")
+	loginCmd.Flags().BoolVar(&openConsole, "open", false, "Automatically open AWS Console after login")
 	rootCmd.AddCommand(loginCmd)
 }

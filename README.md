@@ -26,6 +26,7 @@ A lightweight CLI tool for securely managing AWS AssumeRole sessions with MFA su
 - ⚡ **Shell Init** - One-command setup for seamless shell integration
 - 🕐 **Local Timezone** - All timestamps display in your local timezone
 - 🏷️ **Static Session Names** - Profile names shown in AWS Console instead of random IDs
+- 🔒 **Masked MFA Input** - Asterisk display for MFA codes with backspace support
 
 ## Installation
 
@@ -121,6 +122,15 @@ cloudctl login \
   --role arn:aws:iam::123456789012:role/AdminRole \
   --mfa arn:aws:iam::123456789012:mfa/username \
   --secret "1234567890ABCDEF1234567890ABCDEF"
+```
+
+**With auto-open console:**
+```bash
+cloudctl login \
+  --source mfa-session \
+  --profile uat_ca \
+  --role arn:aws:iam::814348778342:role/CIMBTH_CloudAdministrator \
+  --open
 ```
 
 ### 3. View Stored Sessions
@@ -221,6 +231,7 @@ Assume an AWS role and store credentials locally.
 - `--mfa` - MFA device ARN (optional)
 - `--secret` - Encryption key for credential storage (optional but recommended)
 - `--region` - AWS region (default: ap-southeast-1)
+- `--open` - Automatically open AWS Console after successful login
 
 ### `status`
 
