@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/chukul/cloudctl/internal"
 	"github.com/spf13/cobra"
 )
 
@@ -22,6 +23,10 @@ var rootCmd = &cobra.Command{
 	Use:   "cloudctl",
 	Short: "cloudctl is a CLI tool for managing AWS sessions and credentials",
 	Long:  logo,
+	PersistentPreRun: func(cmd *cobra.Command, args []string) {
+		// Check for updates on every command (non-blocking)
+		internal.CheckForUpdates()
+	},
 }
 
 // Execute runs the CLI
