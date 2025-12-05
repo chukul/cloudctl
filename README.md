@@ -20,7 +20,8 @@ A lightweight CLI tool for securely managing AWS AssumeRole sessions with MFA su
 - 🔄 **MFA Session Caching** - Enter MFA once, assume unlimited roles for 12 hours
 - 🌍 **Region Support** - Default region configuration (ap-southeast-1)
 - 🚀 **Quick Switch** - Fast profile switching with one command
-- 🎨 **Color-Coded Status** - Visual indicators for session health (active/expiring/expired)
+- 🎨 **Enhanced Status Display** - Icons (🟢🟡🔴🔒), grouped sessions, account ID extraction, current session highlighting
+- 💡 **Smart Error Messages** - Helpful troubleshooting tips with available profiles and examples
 - 💻 **Shell Integration** - Display current session in your shell prompt
 - 🔄 **Auto Refresh** - Renew sessions before they expire with bulk operations
 - ⚡ **Shell Init** - One-command setup for seamless shell integration
@@ -144,16 +145,25 @@ cloudctl status --secret "1234567890ABCDEF1234567890ABCDEF"
 
 **Output:**
 ```
-PROFILE         ROLE ARN                                 EXPIRATION           REMAINING    STATUS  
-----------------------------------------------------------------------------------------------------
-prod-admin      arn:aws:iam::123456789012:role/AdminRole 2025-11-20 10:30:00  45m30s       ACTIVE
-mfa-session                                              2025-11-20 22:30:00  11h45m       ACTIVE
+Active Sessions
+────────────────────────────────────────────────────────────────────────────────
+🟢 prod-admin ← current      AdminRole (123456789012)           45m remaining
+   Expires: 2025-11-20 10:30:00
+
+🔒 mfa-session               MFA Session                        11h45m remaining
+   Expires: 2025-11-20 22:30:00
+
+Expiring Soon
+────────────────────────────────────────────────────────────────────────────────
+🟡 staging                   DevOpsRole (987654321098)          12m remaining
+   Expires: 2025-11-20 09:42:00
 ```
 
-**Status Colors:**
+**Status Icons:**
 - 🟢 Green (ACTIVE) - Session has more than 15 minutes remaining
 - 🟡 Yellow (EXPIRING) - Session expires in 15 minutes or less
 - 🔴 Red (EXPIRED) - Session has expired
+- 🔒 Lock (MFA SESSION) - MFA session token
 
 ### 4. Quick Switch Between Profiles
 
@@ -276,7 +286,14 @@ cloudctl login --source mfa-session --profile prod --role arn:aws:iam::123:role/
 
 ### `status`
 
-Show all stored AWS sessions with color-coded expiration status.
+Show all stored AWS sessions with enhanced visual display.
+
+**Features:**
+- Status icons: 🟢 Active | 🟡 Expiring | 🔴 Expired | 🔒 MFA Session
+- Grouped by status (Active → Expiring → Expired)
+- Account ID and role name extraction for cleaner display
+- Current session highlighting (← current)
+- Helpful onboarding message when no sessions exist
 
 **Flags:**
 - `--secret` - Encryption key to decrypt credentials (or set CLOUDCTL_SECRET env var)
@@ -286,6 +303,22 @@ Show all stored AWS sessions with color-coded expiration status.
 cloudctl status
 # or
 ccst  # if shell integration is configured
+```
+
+**Example Output:**
+```
+Active Sessions
+────────────────────────────────────────────────────────────────────────────────
+🟢 prod-admin ← current      AdminRole (123456789012)           45m remaining
+   Expires: 2025-11-20 10:30:00
+
+🔒 mfa-session               MFA Session                        11h45m remaining
+   Expires: 2025-11-20 22:30:00
+
+Expiring Soon
+────────────────────────────────────────────────────────────────────────────────
+🟡 staging                   DevOpsRole (987654321098)          12m remaining
+   Expires: 2025-11-20 09:42:00
 ```
 
 ### `switch`
@@ -461,6 +494,8 @@ These files contain encrypted credentials and should be kept secure.
 
 ## Troubleshooting
 
+CloudCtl provides helpful error messages with troubleshooting tips. Here are common scenarios:
+
 ### "The config profile (X) could not be found"
 
 This error occurs when `AWS_PROFILE` is set in your environment. Unset it:
@@ -471,10 +506,17 @@ eval $(cloudctl switch prod-admin)
 
 ### "Failed to load source profile"
 
-Ensure your source profile exists in `~/.aws/credentials`:
+CloudCtl will automatically list available AWS profiles and cloudctl sessions:
 ```bash
-cat ~/.aws/credentials
-aws configure list-profiles
+❌ Profile 'default' not found
+
+💡 Available AWS profiles:
+   • prod
+   • dev
+   • staging
+
+💡 To create a new profile:
+   aws configure --profile default
 ```
 
 ### "Invalid secret key"
@@ -483,23 +525,46 @@ The encryption key used for decryption doesn't match the one used for encryption
 
 ### "Failed to assume role"
 
-Check that:
-1. Your source profile has valid credentials
-2. The role ARN is correct
-3. Your source credentials have permission to assume the role
-4. The role's trust policy allows your source identity
+CloudCtl provides detailed troubleshooting:
+```bash
+❌ Failed to assume role: AccessDenied
+
+💡 Common issues:
+   • Check the role ARN is correct
+   • Verify the role's trust policy allows your source identity
+   • Ensure your source credentials have sts:AssumeRole permission
+   • Check if the role requires MFA (use --mfa flag)
+```
 
 ### MFA Code Not Working
 
-- Ensure your device time is synchronized (MFA codes are time-based)
-- Wait for a fresh code if the current one is about to expire
-- Verify the MFA device ARN is correct
+CloudCtl shows helpful tips:
+```bash
+❌ MFA authentication failed
+
+💡 Common issues:
+   • Check your MFA code is current (not expired)
+   • Verify MFA device ARN is correct
+   • Ensure device time is synchronized
+   • MFA ARN format: arn:aws:iam::<account-id>:mfa/<username>
+```
 
 ### Console URL Not Opening
 
 - Check that you're using an assumed role profile (not an MFA session)
 - Verify the session hasn't expired
 - Ensure your browser is set as the default application for URLs
+
+### No Sessions Found
+
+When running `cloudctl status` with no sessions, you'll see:
+```bash
+📭 No stored sessions found.
+
+💡 Get started:
+   cloudctl mfa-login --source <profile> --profile mfa-session --mfa <mfa-arn>
+   cloudctl login --source <profile> --profile <name> --role <role-arn>
+```
 
 ## Development
 
