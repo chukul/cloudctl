@@ -3,7 +3,6 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"log"
 	"os"
 	"time"
 
@@ -34,7 +33,19 @@ Use this session as source profile for subsequent role assumptions without re-en
   cloudctl login --source mfa-session --profile role2 --role arn:aws:iam::456:role/Role2`,
 	Run: func(cmd *cobra.Command, args []string) {
 		if mfaSourceProfile == "" || mfaProfile == "" || mfaDeviceArn == "" {
-			log.Fatal("❌ You must specify --source, --profile, and --mfa.")
+			fmt.Println("❌ Missing required parameters")
+			if mfaSourceProfile == "" {
+				fmt.Println("   --source: Source AWS profile")
+			}
+			if mfaProfile == "" {
+				fmt.Println("   --profile: Name for this MFA session")
+			}
+			if mfaDeviceArn == "" {
+				fmt.Println("   --mfa: MFA device ARN")
+			}
+			fmt.Println("\n💡 Example:")
+			fmt.Println("   cloudctl mfa-login --source default --profile mfa-session --mfa arn:aws:iam::123456789012:mfa/username")
+			os.Exit(1)
 		}
 
 		fmt.Printf("🔐 Getting MFA session token from profile %s...\n", mfaSourceProfile)
@@ -46,7 +57,10 @@ Use this session as source profile for subsequent role assumptions without re-en
 			config.WithSharedConfigProfile(mfaSourceProfile),
 			config.WithRegion(region))
 		if err != nil {
-			log.Fatalf("Failed to load source profile %s: %v", mfaSourceProfile, err)
+			fmt.Printf("❌ Profile '%s' not found\n", mfaSourceProfile)
+			fmt.Println("\n💡 To create a new profile:")
+			fmt.Println("   aws configure --profile", mfaSourceProfile)
+			os.Exit(1)
 		}
 
 		// Prompt for MFA code (masked input)
@@ -62,7 +76,13 @@ Use this session as source profile for subsequent role assumptions without re-en
 
 		result, err := stsClient.GetSessionToken(ctx, input)
 		if err != nil {
-			log.Fatalf("❌ Failed to get session token with MFA: %v", err)
+			fmt.Printf("❌ MFA authentication failed: %v\n", err)
+			fmt.Println("\n💡 Common issues:")
+			fmt.Println("   • Check your MFA code is current (not expired)")
+			fmt.Println("   • Verify MFA device ARN is correct")
+			fmt.Println("   • Ensure device time is synchronized")
+			fmt.Printf("   • MFA ARN format: arn:aws:iam::<account-id>:mfa/<username>\n")
+			os.Exit(1)
 		}
 
 		expiration := *result.Credentials.Expiration
@@ -80,11 +100,16 @@ Use this session as source profile for subsequent role assumptions without re-en
 
 		if mfaSecretKey != "" {
 			if err := internal.SaveCredentials(mfaProfile, session, mfaSecretKey); err != nil {
-				log.Fatalf("❌ Failed to save encrypted session: %v", err)
+				fmt.Printf("❌ Failed to save encrypted session: %v\n", err)
+				os.Exit(1)
 			}
 			fmt.Printf("✅ MFA session stored as '%s'\n", mfaProfile)
 		} else {
-			log.Fatal("❌ You must specify --secret to encrypt the session")
+			fmt.Println("❌ Encryption secret required")
+			fmt.Println("\n💡 Set the secret:")
+			fmt.Println("   export CLOUDCTL_SECRET=\"your-32-char-encryption-key\"")
+			fmt.Println("   cloudctl mfa-login --source", mfaSourceProfile, "--profile", mfaProfile, "--mfa", mfaDeviceArn)
+			os.Exit(1)
 		}
 
 		remaining := time.Until(expiration).Round(time.Minute)

@@ -12,6 +12,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sort"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -39,12 +41,26 @@ var loginCmd = &cobra.Command{
 	Short: "Assume an AWS role and store credentials locally (supports MFA)",
 	Run: func(cmd *cobra.Command, args []string) {
 		if sourceProfile == "" || profile == "" || roleArn == "" {
-			log.Fatal("❌ You must specify --source, --profile, and --role.")
+			fmt.Println("❌ Missing required parameters")
+			if sourceProfile == "" {
+				fmt.Println("   --source: Source AWS profile or cloudctl session")
+			}
+			if profile == "" {
+				fmt.Println("   --profile: Name for this session")
+			}
+			if roleArn == "" {
+				fmt.Println("   --role: IAM role ARN to assume")
+			}
+			fmt.Println("\n💡 Example:")
+			fmt.Println("   cloudctl login --source default --profile prod-admin --role arn:aws:iam::123456789012:role/AdminRole")
+			os.Exit(1)
 		}
 
 		// Create session directory if not exists
 		if err := os.MkdirAll(sessionDir, 0700); err != nil {
-			log.Fatalf("Failed to create session directory: %v", err)
+			fmt.Printf("❌ Failed to create session directory: %v\n", err)
+			fmt.Printf("💡 Check permissions for: %s\n", sessionDir)
+			os.Exit(1)
 		}
 
 		fmt.Printf("🔐 Assuming role %s using source profile %s...\n", roleArn, sourceProfile)
@@ -67,7 +83,8 @@ var loginCmd = &cobra.Command{
 					)),
 				)
 				if err != nil {
-					log.Fatalf("Failed to configure AWS SDK with session credentials: %v", err)
+					fmt.Printf("❌ Failed to configure AWS SDK with session credentials: %v\n", err)
+					os.Exit(1)
 				}
 			} else {
 				// Source is an AWS CLI profile
@@ -75,7 +92,27 @@ var loginCmd = &cobra.Command{
 					config.WithSharedConfigProfile(sourceProfile),
 					config.WithRegion(region))
 				if err != nil {
-					log.Fatalf("Failed to load source profile %s: %v", sourceProfile, err)
+					fmt.Printf("❌ Profile '%s' not found\n", sourceProfile)
+					
+					// Try to list available profiles
+					if profiles := listAWSProfiles(); len(profiles) > 0 {
+						fmt.Println("\n💡 Available AWS profiles:")
+						for _, p := range profiles {
+							fmt.Printf("   • %s\n", p)
+						}
+					}
+					
+					// Check for cloudctl sessions
+					if sessions, _ := internal.ListProfiles(); len(sessions) > 0 {
+						fmt.Println("\n💡 Available cloudctl sessions:")
+						for _, s := range sessions {
+							fmt.Printf("   • %s\n", s)
+						}
+					}
+					
+					fmt.Println("\n💡 To create a new profile:")
+					fmt.Println("   aws configure --profile", sourceProfile)
+					os.Exit(1)
 				}
 			}
 		} else {
@@ -84,7 +121,18 @@ var loginCmd = &cobra.Command{
 				config.WithSharedConfigProfile(sourceProfile),
 				config.WithRegion(region))
 			if err != nil {
-				log.Fatalf("Failed to load source profile %s: %v", sourceProfile, err)
+				fmt.Printf("❌ Profile '%s' not found\n", sourceProfile)
+				
+				if profiles := listAWSProfiles(); len(profiles) > 0 {
+					fmt.Println("\n💡 Available AWS profiles:")
+					for _, p := range profiles {
+						fmt.Printf("   • %s\n", p)
+					}
+				}
+				
+				fmt.Println("\n💡 To create a new profile:")
+				fmt.Println("   aws configure --profile", sourceProfile)
+				os.Exit(1)
 			}
 		}
 
@@ -102,7 +150,13 @@ var loginCmd = &cobra.Command{
 
 			result, err := stsClient.GetSessionToken(ctx, input)
 			if err != nil {
-				log.Fatalf("❌ Failed to get session token with MFA: %v", err)
+				fmt.Printf("❌ MFA authentication failed: %v\n", err)
+				fmt.Println("\n💡 Common issues:")
+				fmt.Println("   • Check your MFA code is current (not expired)")
+				fmt.Println("   • Verify MFA device ARN is correct")
+				fmt.Println("   • Ensure device time is synchronized")
+				fmt.Printf("   • MFA ARN format: arn:aws:iam::<account-id>:mfa/<username>\n")
+				os.Exit(1)
 			}
 
 			cfg.Credentials = aws.NewCredentialsCache(
@@ -126,7 +180,14 @@ var loginCmd = &cobra.Command{
 			DurationSeconds: &duration,
 		})
 		if err != nil {
-			log.Fatalf("❌ Failed to assume role: %v", err)
+			fmt.Printf("❌ Failed to assume role: %v\n", err)
+			fmt.Println("\n💡 Common issues:")
+			fmt.Println("   • Check the role ARN is correct")
+			fmt.Println("   • Verify the role's trust policy allows your source identity")
+			fmt.Println("   • Ensure your source credentials have sts:AssumeRole permission")
+			fmt.Println("   • Check if the role requires MFA (use --mfa flag)")
+			fmt.Printf("\n💡 Role ARN format: arn:aws:iam::<account-id>:role/<role-name>\n")
+			os.Exit(1)
 		}
 
 		expiration := *roleResult.Credentials.Expiration
@@ -143,7 +204,9 @@ var loginCmd = &cobra.Command{
 
 		if secretKey != "" {
 			if err := internal.SaveCredentials(profile, session, secretKey); err != nil {
-				log.Fatalf("❌ Failed to save encrypted session: %v", err)
+				fmt.Printf("❌ Failed to save encrypted session: %v\n", err)
+				fmt.Printf("💡 Check permissions for: %s\n", filepath.Join(os.Getenv("HOME"), ".cloudctl"))
+				os.Exit(1)
 			}
 			fmt.Printf("✅ Encrypted session stored as '%s'\n", profile)
 		} else {
@@ -226,6 +289,48 @@ func openAWSConsole(session *internal.AWSSession, consoleRegion string) error {
 		return fmt.Errorf("unsupported platform")
 	}
 	return cmd.Start()
+}
+
+// listAWSProfiles reads AWS CLI profiles from ~/.aws/credentials and ~/.aws/config
+func listAWSProfiles() []string {
+	profiles := make(map[string]bool)
+	
+	// Check credentials file
+	credPath := filepath.Join(os.Getenv("HOME"), ".aws", "credentials")
+	if data, err := os.ReadFile(credPath); err == nil {
+		lines := strings.Split(string(data), "\n")
+		for _, line := range lines {
+			line = strings.TrimSpace(line)
+			if strings.HasPrefix(line, "[") && strings.HasSuffix(line, "]") {
+				profile := strings.Trim(line, "[]")
+				profiles[profile] = true
+			}
+		}
+	}
+	
+	// Check config file
+	configPath := filepath.Join(os.Getenv("HOME"), ".aws", "config")
+	if data, err := os.ReadFile(configPath); err == nil {
+		lines := strings.Split(string(data), "\n")
+		for _, line := range lines {
+			line = strings.TrimSpace(line)
+			if strings.HasPrefix(line, "[profile ") && strings.HasSuffix(line, "]") {
+				profile := strings.TrimPrefix(strings.Trim(line, "[]"), "profile ")
+				profiles[profile] = true
+			} else if strings.HasPrefix(line, "[") && strings.HasSuffix(line, "]") && !strings.Contains(line, " ") {
+				profile := strings.Trim(line, "[]")
+				profiles[profile] = true
+			}
+		}
+	}
+	
+	// Convert to sorted slice
+	result := make([]string, 0, len(profiles))
+	for p := range profiles {
+		result = append(result, p)
+	}
+	sort.Strings(result)
+	return result
 }
 
 func init() {

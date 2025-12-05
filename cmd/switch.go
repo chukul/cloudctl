@@ -25,13 +25,27 @@ var switchCmd = &cobra.Command{
 		profile := args[0]
 
 		if switchSecret == "" {
-			fmt.Println("❌ You must specify --secret or set CLOUDCTL_SECRET environment variable")
+			fmt.Println("❌ Encryption secret required")
+			fmt.Println("\n💡 Set the secret:")
+			fmt.Println("   export CLOUDCTL_SECRET=\"your-32-char-encryption-key\"")
+			fmt.Println("   eval $(cloudctl switch", profile, ")")
 			return
 		}
 
 		s, err := internal.LoadCredentials(profile, switchSecret)
 		if err != nil {
-			fmt.Printf("❌ Failed to load session for profile '%s': %v\n", profile, err)
+			fmt.Printf("❌ Profile '%s' not found\n", profile)
+			
+			// List available profiles
+			if profiles, _ := internal.ListProfiles(); len(profiles) > 0 {
+				fmt.Println("\n💡 Available profiles:")
+				for _, p := range profiles {
+					fmt.Printf("   • %s\n", p)
+				}
+			} else {
+				fmt.Println("\n💡 No sessions found. Create one with:")
+				fmt.Println("   cloudctl login --source <profile> --profile <name> --role <role-arn>")
+			}
 			return
 		}
 
