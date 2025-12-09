@@ -117,7 +117,7 @@ var promptSetupCmd = &cobra.Command{
 	Use:   "setup",
 	Short: "Show shell integration setup instructions",
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println(`
+		fmt.Print(`
 Shell Prompt Integration Setup
 ================================
 
@@ -165,8 +165,7 @@ end
 
 After setup, your prompt will show:
 ☁️  prod-admin (45m) user@host:~$
-
-Note: Set CLOUDCTL_SECRET environment variable with your encryption key.
+💡 Or set CLOUDCTL_SECRET environment variable:
 `)
 	},
 }
@@ -174,7 +173,7 @@ Note: Set CLOUDCTL_SECRET environment variable with your encryption key.
 func init() {
 	promptCmd.Flags().StringVar(&promptSecret, "secret", os.Getenv("CLOUDCTL_SECRET"), "Secret key for decryption (or set CLOUDCTL_SECRET env var)")
 	promptInfoCmd.Flags().StringVar(&promptSecret, "secret", os.Getenv("CLOUDCTL_SECRET"), "Secret key for decryption (or set CLOUDCTL_SECRET env var)")
-	
+
 	promptCmd.AddCommand(promptInfoCmd)
 	promptCmd.AddCommand(promptSetupCmd)
 	rootCmd.AddCommand(promptCmd)

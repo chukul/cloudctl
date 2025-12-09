@@ -14,12 +14,13 @@ var initCmd = &cobra.Command{
 	Long:  `Generate shell integration code to simplify cloudctl usage. Add the output to your shell config file.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		shell := detectShell()
-		
+
 		fmt.Printf("# CloudCtl Shell Integration for %s\n", shell)
 		fmt.Println("# Add this to your shell config file:")
-		fmt.Printf("# - Bash: ~/.bashrc or ~/.bash_profile\n")
-		fmt.Printf("# - Zsh: ~/.zshrc\n")
-		fmt.Printf("# - Fish: ~/.config/fish/config.fish\n\n")
+		fmt.Println("# - Bash: ~/.bashrc or ~/.bash_profile")
+		fmt.Println("# - Zsh: ~/.zshrc")
+		fmt.Println("# - Fish: ~/.config/fish/config.fish")
+		fmt.Println()
 
 		switch shell {
 		case "bash", "zsh":
@@ -40,7 +41,7 @@ func detectShell() string {
 		}
 		return "bash"
 	}
-	
+
 	// Extract shell name from path
 	for i := len(shell) - 1; i >= 0; i-- {
 		if shell[i] == '/' || shell[i] == '\\' {
@@ -57,10 +58,12 @@ export CLOUDCTL_SECRET="your-32-char-encryption-key"
 # Quick switch function - usage: ccs <profile>
 ccs() {
   if [ -z "$1" ]; then
-    echo "Usage: ccs <profile>"
-    return 1
+    # Interactive mode
+    eval $(cloudctl switch)
+  else
+    # Direct profile switch
+    eval $(cloudctl switch "$1")
   fi
-  eval $(cloudctl switch "$1")
 }
 
 # Show current session in prompt (optional)
@@ -84,12 +87,15 @@ func printFishIntegration() {
 set -gx CLOUDCTL_SECRET "your-32-char-encryption-key"
 
 # Quick switch function - usage: ccs <profile>
+# Quick switch function - usage: ccs <profile>
 function ccs
     if test (count $argv) -eq 0
-        echo "Usage: ccs <profile>"
-        return 1
+        # Interactive mode
+        eval (cloudctl switch)
+    else
+        # Direct profile switch
+        eval (cloudctl switch $argv[1])
     end
-    eval (cloudctl switch $argv[1])
 end
 
 # Show current session in prompt (optional)

@@ -10,19 +10,42 @@ import (
 )
 
 var storePath = filepath.Join(os.Getenv("HOME"), ".cloudctl", "credentials.json")
+var mfaStorePath = filepath.Join(os.Getenv("HOME"), ".cloudctl", "mfa.json")
 
 // SaveCredentials encrypts and stores AWS session
 func SaveCredentials(profile string, creds *AWSSession, key string) error {
 	os.MkdirAll(filepath.Dir(storePath), 0700)
 
 	// encrypt each field using []byte(key)
-	akEnc, _ := Encrypt([]byte(creds.AccessKey), []byte(key))
-	skEnc, _ := Encrypt([]byte(creds.SecretKey), []byte(key))
-	stEnc, _ := Encrypt([]byte(creds.SessionToken), []byte(key))
-	exEnc, _ := Encrypt([]byte(creds.Expiration.Format(time.RFC3339)), []byte(key))
-	rnEnc, _ := Encrypt([]byte(creds.RoleArn), []byte(key))
-	snEnc, _ := Encrypt([]byte(creds.SessionName), []byte(key))
-	spEnc, _ := Encrypt([]byte(creds.SourceProfile), []byte(key))
+	// encrypt each field
+	akEnc, err := Encrypt([]byte(creds.AccessKey), []byte(key))
+	if err != nil {
+		return fmt.Errorf("failed to encrypt AccessKey: %w", err)
+	}
+	skEnc, err := Encrypt([]byte(creds.SecretKey), []byte(key))
+	if err != nil {
+		return fmt.Errorf("failed to encrypt SecretKey: %w", err)
+	}
+	stEnc, err := Encrypt([]byte(creds.SessionToken), []byte(key))
+	if err != nil {
+		return fmt.Errorf("failed to encrypt SessionToken: %w", err)
+	}
+	exEnc, err := Encrypt([]byte(creds.Expiration.Format(time.RFC3339)), []byte(key))
+	if err != nil {
+		return fmt.Errorf("failed to encrypt Expiration: %w", err)
+	}
+	rnEnc, err := Encrypt([]byte(creds.RoleArn), []byte(key))
+	if err != nil {
+		return fmt.Errorf("failed to encrypt RoleArn: %w", err)
+	}
+	snEnc, err := Encrypt([]byte(creds.SessionName), []byte(key))
+	if err != nil {
+		return fmt.Errorf("failed to encrypt SessionName: %w", err)
+	}
+	spEnc, err := Encrypt([]byte(creds.SourceProfile), []byte(key))
+	if err != nil {
+		return fmt.Errorf("failed to encrypt SourceProfile: %w", err)
+	}
 
 	// convert encrypted bytes to base64 strings for JSON
 	encrypted := map[string]string{
@@ -38,8 +61,16 @@ func SaveCredentials(profile string, creds *AWSSession, key string) error {
 	// load existing data
 	data := make(map[string]map[string]string)
 	if _, err := os.Stat(storePath); err == nil {
-		b, _ := os.ReadFile(storePath)
-		json.Unmarshal(b, &data)
+		b, err := os.ReadFile(storePath)
+		if err != nil {
+			return fmt.Errorf("failed to read store: %w", err)
+		}
+		if len(b) > 0 {
+			if err := json.Unmarshal(b, &data); err != nil {
+				// Don't overwrite if we can't parse!
+				return fmt.Errorf("failed to parse existing credentials file (corrupt?): %w", err)
+			}
+		}
 	}
 
 	data[profile] = encrypted
@@ -168,4 +199,58 @@ func ListProfiles() ([]string, error) {
 		keys = append(keys, k)
 	}
 	return keys, nil
+}
+
+// MFA Device Storage
+
+func SaveMFADevice(name, arn string) error {
+	os.MkdirAll(filepath.Dir(mfaStorePath), 0700)
+
+	devices := make(map[string]string)
+	if b, err := os.ReadFile(mfaStorePath); err == nil {
+		json.Unmarshal(b, &devices)
+	}
+
+	devices[name] = arn
+
+	b, _ := json.MarshalIndent(devices, "", "  ")
+	return os.WriteFile(mfaStorePath, b, 0600)
+}
+
+func ListMFADevices() (map[string]string, error) {
+	devices := make(map[string]string)
+	b, err := os.ReadFile(mfaStorePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return devices, nil
+		}
+		return nil, err
+	}
+
+	if err := json.Unmarshal(b, &devices); err != nil {
+		return nil, err
+	}
+	return devices, nil
+}
+
+func RemoveMFADevice(name string) error {
+	devices, err := ListMFADevices()
+	if err != nil {
+		return err
+	}
+
+	if _, ok := devices[name]; !ok {
+		return fmt.Errorf("device '%s' not found", name)
+	}
+
+	delete(devices, name)
+
+	b, _ := json.MarshalIndent(devices, "", "  ")
+	return os.WriteFile(mfaStorePath, b, 0600)
+}
+
+func GetMFADevice(name string) (string, bool) {
+	devices, _ := ListMFADevices()
+	arn, ok := devices[name]
+	return arn, ok
 }

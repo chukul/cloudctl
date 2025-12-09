@@ -14,8 +14,12 @@ A lightweight CLI tool for securely managing AWS AssumeRole sessions with MFA su
 
 - 🔐 **Secure Credential Storage** - Encrypt AWS credentials with AES-256-GCM
 - 🎯 **AssumeRole Support** - Easily assume IAM roles with MFA
-- 🌐 **Console Access** - Generate and auto-open AWS Console sign-in URLs
-- 📦 **Session Management** - List, switch, and manage multiple AWS sessions
+- 🌐 **Console Access** - **Interactive TUI**: Modern, interactive prompts for profile selection and login.
+- **MFA Device Management**: Save and alias your MFA devices (`cloudctl mfa`).
+- **Touch ID Support**: Securely store encryption keys in macOS Keychain for passwordless operation.
+- **Credential Sync**: Export assumed roles to `~/.aws/credentials` for compatibility with external tools (Terraform, VS Code, etc.).
+- **Secure Storage**: Credentials are encrypted using AES-256-GCM (hashed keys).
+- **Session Management**: List, refresh, and switch between multiple active sessions.
 - 🔑 **MFA Support** - Built-in multi-factor authentication support
 - 🔄 **MFA Session Caching** - Enter MFA once, assume unlimited roles for 12 hours
 - 🌍 **Region Support** - Default region configuration (ap-southeast-1)
@@ -222,7 +226,9 @@ cloudctl refresh --all --secret "1234567890ABCDEF1234567890ABCDEF"
 ccr --all
 ```
 
-**Note:** MFA sessions cannot be refreshed. Use `mfa-login` to create a new one.
+**Note:** 
+- MFA sessions cannot be refreshed. Use `mfa-login` to create a new one.
+- Only sessions with source profile information can be refreshed.
 
 ### 7. Logout
 
@@ -234,6 +240,43 @@ cloudctl logout --profile prod-admin
 
 # Remove all profiles
 cloudctl logout --all
+```
+
+## 🔐 Touch ID & Security (macOS)
+
+On macOS, `cloudctl` can store your encryption key securely in the System Keychain.
+This allows you to use `cloudctl` without manually setting the `CLOUDCTL_SECRET` environment variable.
+
+1. Run `cloudctl login` (or any command) without a secret.
+2. Follow the prompt to generate and store a secure key.
+3. Future commands will use Touch ID / User Password to unlock the key automatically.
+
+## 📱 MFA Device Management
+
+Save your MFA devices with friendly names to avoid typing ARNs.
+
+```bash
+# Add a device alias
+cloudctl mfa add iphone arn:aws:iam::123456789012:mfa/my-user
+
+# List saved devices
+cloudctl mfa list
+
+# Use alias in login
+cloudctl mfa-login --mfa iphone
+```
+
+## 🔄 Credential Sync
+
+Export your active `cloudctl` sessions to the standard `~/.aws/credentials` file.
+This makes your assumed roles available to tools like **Terraform**, **VS Code Extensions**, and **TablePlus**.
+
+```bash
+# Sync all active sessions
+cloudctl sync --all
+
+# Sync a specific profile
+cloudctl sync --profile prod-admin
 ```
 
 ## Commands Reference

@@ -45,7 +45,16 @@ var statusCmd = &cobra.Command{
 	Use:   "status",
 	Short: "Show stored AWS sessions",
 	Run: func(cmd *cobra.Command, args []string) {
-		sessions, err := internal.ListAllSessions(statusSecret)
+		// Get secret from flag, env, or keychain
+		secret, err := internal.GetSecret(statusSecret)
+		if err != nil {
+			fmt.Println("❌ Encryption secret required to view session status")
+			fmt.Println("\n💡 Set the secret:")
+			fmt.Println("   export CLOUDCTL_SECRET=\"your-32-char-encryption-key\"")
+			return
+		}
+
+		sessions, err := internal.ListAllSessions(secret)
 		if err != nil {
 			fmt.Printf("❌ Failed to load sessions: %v\n", err)
 			return

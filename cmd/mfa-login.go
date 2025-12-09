@@ -4,11 +4,13 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 	"github.com/chukul/cloudctl/internal"
+	"github.com/chukul/cloudctl/internal/ui"
 	"github.com/spf13/cobra"
 )
 
@@ -32,6 +34,60 @@ Use this session as source profile for subsequent role assumptions without re-en
   cloudctl login --source mfa-session --profile role1 --role arn:aws:iam::123:role/Role1
   cloudctl login --source mfa-session --profile role2 --role arn:aws:iam::456:role/Role2`,
 	Run: func(cmd *cobra.Command, args []string) {
+		// Interactive prompts for missing parameters
+		if mfaSourceProfile == "" {
+			awsProfiles := listAWSProfiles()
+			if len(awsProfiles) > 0 {
+				selected, err := ui.SelectProfile("Select Source Profile", awsProfiles)
+				if err != nil {
+					return
+				}
+				mfaSourceProfile = selected
+			}
+		}
+
+		if mfaProfile == "" {
+			var err error
+			mfaProfile, err = ui.GetInput("Enter MFA Session Name", "mfa-session", false)
+			if err != nil {
+				return
+			}
+		}
+
+		if mfaDeviceArn == "" {
+			// Check if we have stored devices
+			devices, _ := internal.ListMFADevices()
+			if len(devices) > 0 {
+				// Convert to selection list
+				var deviceNames []string
+				for name, arn := range devices {
+					deviceNames = append(deviceNames, fmt.Sprintf("%s (%s)", name, arn))
+				}
+
+				selected, err := ui.SelectProfile("Select MFA Device", deviceNames)
+				if err == nil {
+					// Parse selected string "name (arn)"
+					parts := strings.SplitN(selected, " (", 2)
+					mfaDeviceArn = devices[parts[0]]
+				}
+			}
+
+			// If still empty (no selection or no saved devices), prompt for input
+			if mfaDeviceArn == "" {
+				var err error
+				mfaDeviceArn, err = ui.GetInput("Enter MFA Device ARN", "arn:aws:iam::123:mfa/user", false)
+				if err != nil {
+					return
+				}
+			}
+		} else {
+			// Check if input matches an alias
+			if arn, found := internal.GetMFADevice(mfaDeviceArn); found {
+				fmt.Printf("📱 Using stored device '%s'\n", mfaDeviceArn)
+				mfaDeviceArn = arn
+			}
+		}
+
 		if mfaSourceProfile == "" || mfaProfile == "" || mfaDeviceArn == "" {
 			fmt.Println("❌ Missing required parameters")
 			if mfaSourceProfile == "" {
@@ -66,7 +122,7 @@ Use this session as source profile for subsequent role assumptions without re-en
 		// Prompt for MFA code (masked input)
 		mfaCode := readMFACode()
 
-		// Get session token with MFA
+		// Get session token with MFA using spinner
 		stsClient := sts.NewFromConfig(cfg)
 		input := &sts.GetSessionTokenInput{
 			DurationSeconds: &mfaDuration,
@@ -74,7 +130,10 @@ Use this session as source profile for subsequent role assumptions without re-en
 			TokenCode:       &mfaCode,
 		}
 
-		result, err := stsClient.GetSessionToken(ctx, input)
+		res, err := ui.Spin("Authenticating with MFA...", func() (any, error) {
+			return stsClient.GetSessionToken(ctx, input)
+		})
+
 		if err != nil {
 			fmt.Printf("❌ MFA authentication failed: %v\n", err)
 			fmt.Println("\n💡 Common issues:")
@@ -82,6 +141,12 @@ Use this session as source profile for subsequent role assumptions without re-en
 			fmt.Println("   • Verify MFA device ARN is correct")
 			fmt.Println("   • Ensure device time is synchronized")
 			fmt.Printf("   • MFA ARN format: arn:aws:iam::<account-id>:mfa/<username>\n")
+			os.Exit(1)
+		}
+
+		result, ok := res.(*sts.GetSessionTokenOutput)
+		if !ok || result == nil {
+			fmt.Println("❌ Internal error: invalid response from GetSessionToken")
 			os.Exit(1)
 		}
 
@@ -98,19 +163,41 @@ Use this session as source profile for subsequent role assumptions without re-en
 			SourceProfile: mfaSourceProfile,
 		}
 
-		if mfaSecretKey != "" {
-			if err := internal.SaveCredentials(mfaProfile, session, mfaSecretKey); err != nil {
-				fmt.Printf("❌ Failed to save encrypted session: %v\n", err)
+		// Get secret from flag, env, or keychain
+		secret, err := internal.GetSecret(mfaSecretKey)
+		if err != nil {
+			// If on macOS and no secret found, offer to create one in keychain
+			if internal.IsMacOS() {
+				fmt.Println("🔑 No encryption secret found.")
+				fmt.Println("   Would you like to generate a secure key and store it in your System Keychain? (y/n)")
+				var response string
+				fmt.Scanln(&response)
+				if strings.ToLower(response) == "y" {
+					newSecret, err := internal.SetupKeychain()
+					if err != nil {
+						fmt.Printf("❌ Failed to setup keychain: %v\n", err)
+						return
+					}
+					secret = newSecret
+					fmt.Println("✅ Secure key generated and stored in Keychain.")
+				} else {
+					fmt.Println("❌ Operation cancelled. Secret required.")
+					return
+				}
+			} else {
+				fmt.Println("❌ Encryption secret required")
+				fmt.Println("\n💡 Set the secret:")
+				fmt.Println("   export CLOUDCTL_SECRET=\"your-32-char-encryption-key\"")
+				fmt.Println("   cloudctl mfa-login --source", mfaSourceProfile, "--profile", mfaProfile, "--mfa", mfaDeviceArn)
 				os.Exit(1)
 			}
-			fmt.Printf("✅ MFA session stored as '%s'\n", mfaProfile)
-		} else {
-			fmt.Println("❌ Encryption secret required")
-			fmt.Println("\n💡 Set the secret:")
-			fmt.Println("   export CLOUDCTL_SECRET=\"your-32-char-encryption-key\"")
-			fmt.Println("   cloudctl mfa-login --source", mfaSourceProfile, "--profile", mfaProfile, "--mfa", mfaDeviceArn)
+		}
+
+		if err := internal.SaveCredentials(mfaProfile, session, secret); err != nil {
+			fmt.Printf("❌ Failed to save encrypted session: %v\n", err)
 			os.Exit(1)
 		}
+		fmt.Printf("✅ MFA session stored as '%s'\n", mfaProfile)
 
 		remaining := time.Until(expiration).Round(time.Minute)
 		hours := int(remaining.Hours())

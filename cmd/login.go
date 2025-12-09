@@ -21,6 +21,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 	"github.com/chukul/cloudctl/internal"
+	"github.com/chukul/cloudctl/internal/ui"
 	"github.com/spf13/cobra"
 )
 
@@ -40,6 +41,52 @@ var loginCmd = &cobra.Command{
 	Use:   "login",
 	Short: "Assume an AWS role and store credentials locally (supports MFA)",
 	Run: func(cmd *cobra.Command, args []string) {
+		// Interactive prompts for missing parameters
+		if sourceProfile == "" {
+			awsProfiles := listAWSProfiles()
+			ctlProfiles, _ := internal.ListProfiles()
+
+			// Merge and deduplicate
+			seen := make(map[string]bool)
+			var allProfiles []string
+			for _, p := range awsProfiles {
+				if !seen[p] {
+					allProfiles = append(allProfiles, p)
+					seen[p] = true
+				}
+			}
+			for _, p := range ctlProfiles {
+				if !seen[p] {
+					allProfiles = append(allProfiles, p)
+					seen[p] = true
+				}
+			}
+
+			if len(allProfiles) > 0 {
+				selected, err := ui.SelectProfile("Select Source Profile", allProfiles)
+				if err != nil {
+					return
+				}
+				sourceProfile = selected
+			}
+		}
+
+		if profile == "" {
+			var err error
+			profile, err = ui.GetInput("Enter Session Name", "prod-admin", false)
+			if err != nil {
+				return
+			}
+		}
+
+		if roleArn == "" {
+			var err error
+			roleArn, err = ui.GetInput("Enter Role ARN", "arn:aws:iam::123456789012:role/RoleName", false)
+			if err != nil {
+				return
+			}
+		}
+
 		if sourceProfile == "" || profile == "" || roleArn == "" {
 			fmt.Println("❌ Missing required parameters")
 			if sourceProfile == "" {
@@ -63,15 +110,50 @@ var loginCmd = &cobra.Command{
 			os.Exit(1)
 		}
 
-		fmt.Printf("🔐 Assuming role %s using source profile %s...\n", roleArn, sourceProfile)
-
+		// Prepare config (blocking, but usually fast)
 		ctx := context.TODO()
 		var cfg aws.Config
 		var err error
 
-		// Check if source profile is a cloudctl session first
-		if secretKey != "" {
-			session, sessionErr := internal.LoadCredentials(sourceProfile, secretKey)
+		// Config loading logic...
+
+		// Detect or request secret
+		var secret string
+		// Only check for secret if user provided one manually, or if they haven't disabled encryption
+		// Actually, logic is: try to get secret. If found, use it. If not, ask to create (on macOS) or fail/fallback to plain file ??
+		// Original logic: "if secretKey != """.
+		// New Logic: Always try to get a secure secret if we are going to store credentials securely.
+		// However, we must respect the existing flow.
+
+		useEncryption := false
+		secret, err = internal.GetSecret(secretKey)
+		if err == nil {
+			useEncryption = true
+		} else {
+			// No secret found. If on macOS, offer to setup keychain.
+			if internal.IsMacOS() {
+				// Only prompt if we are in interactive mode (profile was not empty means likely non-interactive? No, args check)
+				fmt.Println("🔑 No encryption secret found.")
+				fmt.Println("   Would you like to generate a secure key and store it in your System Keychain? (y/n)")
+				var response string
+				fmt.Scanln(&response)
+				if strings.ToLower(response) == "y" {
+					newSecret, keychainErr := internal.SetupKeychain()
+					if keychainErr != nil {
+						fmt.Printf("❌ Failed to setup keychain: %v\n", keychainErr)
+						// Fallback to unencrypted
+					} else {
+						secret = newSecret
+						useEncryption = true
+						fmt.Println("✅ Secure key generated and stored in Keychain.")
+					}
+				}
+			}
+		}
+
+		// Config loading logic...
+		if useEncryption {
+			session, sessionErr := internal.LoadCredentials(sourceProfile, secret)
 			if sessionErr == nil {
 				// Source is a cloudctl session, use its credentials
 				cfg, err = config.LoadDefaultConfig(ctx,
@@ -93,7 +175,7 @@ var loginCmd = &cobra.Command{
 					config.WithRegion(region))
 				if err != nil {
 					fmt.Printf("❌ Profile '%s' not found\n", sourceProfile)
-					
+
 					// Try to list available profiles
 					if profiles := listAWSProfiles(); len(profiles) > 0 {
 						fmt.Println("\n💡 Available AWS profiles:")
@@ -101,7 +183,7 @@ var loginCmd = &cobra.Command{
 							fmt.Printf("   • %s\n", p)
 						}
 					}
-					
+
 					// Check for cloudctl sessions
 					if sessions, _ := internal.ListProfiles(); len(sessions) > 0 {
 						fmt.Println("\n💡 Available cloudctl sessions:")
@@ -109,7 +191,7 @@ var loginCmd = &cobra.Command{
 							fmt.Printf("   • %s\n", s)
 						}
 					}
-					
+
 					fmt.Println("\n💡 To create a new profile:")
 					fmt.Println("   aws configure --profile", sourceProfile)
 					os.Exit(1)
@@ -122,14 +204,14 @@ var loginCmd = &cobra.Command{
 				config.WithRegion(region))
 			if err != nil {
 				fmt.Printf("❌ Profile '%s' not found\n", sourceProfile)
-				
+
 				if profiles := listAWSProfiles(); len(profiles) > 0 {
 					fmt.Println("\n💡 Available AWS profiles:")
 					for _, p := range profiles {
 						fmt.Printf("   • %s\n", p)
 					}
 				}
-				
+
 				fmt.Println("\n💡 To create a new profile:")
 				fmt.Println("   aws configure --profile", sourceProfile)
 				os.Exit(1)
@@ -169,16 +251,19 @@ var loginCmd = &cobra.Command{
 			fmt.Println("✅ MFA verification successful.")
 		}
 
-		// Assume target IAM role
+		// Assume target IAM role with spinner
 		stsClient := sts.NewFromConfig(cfg)
 		sessionName := profile // Use profile name as session name
 		duration := int32(3600)
 
-		roleResult, err := stsClient.AssumeRole(ctx, &sts.AssumeRoleInput{
-			RoleArn:         &roleArn,
-			RoleSessionName: &sessionName,
-			DurationSeconds: &duration,
+		res, err := ui.Spin(fmt.Sprintf("Assuming role %s...", roleArn), func() (any, error) {
+			return stsClient.AssumeRole(ctx, &sts.AssumeRoleInput{
+				RoleArn:         &roleArn,
+				RoleSessionName: &sessionName,
+				DurationSeconds: &duration,
+			})
 		})
+
 		if err != nil {
 			fmt.Printf("❌ Failed to assume role: %v\n", err)
 			fmt.Println("\n💡 Common issues:")
@@ -190,6 +275,11 @@ var loginCmd = &cobra.Command{
 			os.Exit(1)
 		}
 
+		roleResult, ok := res.(*sts.AssumeRoleOutput)
+		if !ok || roleResult == nil {
+			fmt.Println("❌ Internal error: invalid response from AssumeRole")
+			os.Exit(1)
+		}
 		expiration := *roleResult.Credentials.Expiration
 
 		session := &internal.AWSSession{
@@ -202,8 +292,8 @@ var loginCmd = &cobra.Command{
 			SourceProfile: sourceProfile,
 		}
 
-		if secretKey != "" {
-			if err := internal.SaveCredentials(profile, session, secretKey); err != nil {
+		if useEncryption {
+			if err := internal.SaveCredentials(profile, session, secret); err != nil {
 				fmt.Printf("❌ Failed to save encrypted session: %v\n", err)
 				fmt.Printf("💡 Check permissions for: %s\n", filepath.Join(os.Getenv("HOME"), ".cloudctl"))
 				os.Exit(1)
@@ -294,7 +384,7 @@ func openAWSConsole(session *internal.AWSSession, consoleRegion string) error {
 // listAWSProfiles reads AWS CLI profiles from ~/.aws/credentials and ~/.aws/config
 func listAWSProfiles() []string {
 	profiles := make(map[string]bool)
-	
+
 	// Check credentials file
 	credPath := filepath.Join(os.Getenv("HOME"), ".aws", "credentials")
 	if data, err := os.ReadFile(credPath); err == nil {
@@ -307,7 +397,7 @@ func listAWSProfiles() []string {
 			}
 		}
 	}
-	
+
 	// Check config file
 	configPath := filepath.Join(os.Getenv("HOME"), ".aws", "config")
 	if data, err := os.ReadFile(configPath); err == nil {
@@ -323,7 +413,7 @@ func listAWSProfiles() []string {
 			}
 		}
 	}
-	
+
 	// Convert to sorted slice
 	result := make([]string, 0, len(profiles))
 	for p := range profiles {

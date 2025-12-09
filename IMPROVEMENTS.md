@@ -182,6 +182,16 @@ Failed to load source profile default: ...
    - Added profile not found handling
    - Improved secret missing message
 
+### #6: Interactive TUI Mode
+- ✅ **Interactive Switch**: `cloudctl switch` now opens a profile selector if no profile is provided.
+- ✅ **Interactive Login**: `cloudctl login` and `mfa-login` prompt for missing parameters (Source Profile, Roles, etc.).
+- ✅ **Visual Polish**: Used `bubbletea` and `lipgloss` for modern CLI aesthetics.
+
+### #7: Credential Sync & Enhanced Shell Integration
+- ✅ **Tool Sync**: Added `cloudctl sync` to export sessions to `~/.aws/credentials` for external tool compatibility (Terraform, GUI apps).
+- ✅ **Smart Alias**: Updated `cloudctl init` so the `ccs` alias supports both direct switching (`ccs prod`) and interactive mode (`ccs` with no args).
+- ✅ **Shell Completion**: Enabled standard Cobra completion command (`cloudctl completion`).
+
 ## Benefits
 
 1. **Faster Troubleshooting** - Users can immediately see what's wrong and how to fix it
@@ -193,7 +203,6 @@ Failed to load source profile default: ...
 
 ## Future Enhancements (Not Implemented)
 
-- Interactive TUI mode with arrow key navigation
 - Progress indicators for long operations
 - Desktop notifications for expiring sessions
 - Table filtering and sorting flags

@@ -4,12 +4,17 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
+	"crypto/sha256"
 	"errors"
 	"io"
 )
 
 func Encrypt(plainText []byte, key []byte) ([]byte, error) {
-	block, err := aes.NewCipher(key)
+	// Hash the key to ensure it is exactly 32 bytes (AES-256)
+	// This allows users to use any length secret (passphrase or hex key)
+	key32 := sha256.Sum256(key)
+
+	block, err := aes.NewCipher(key32[:])
 	if err != nil {
 		return nil, err
 	}
@@ -28,7 +33,10 @@ func Encrypt(plainText []byte, key []byte) ([]byte, error) {
 }
 
 func Decrypt(cipherText []byte, key []byte) ([]byte, error) {
-	block, err := aes.NewCipher(key)
+	// Hash the key to ensure it is exactly 32 bytes
+	key32 := sha256.Sum256(key)
+
+	block, err := aes.NewCipher(key32[:])
 	if err != nil {
 		return nil, err
 	}

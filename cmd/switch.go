@@ -5,46 +5,75 @@ import (
 	"os"
 
 	"github.com/chukul/cloudctl/internal"
+	"github.com/chukul/cloudctl/internal/ui"
 	"github.com/spf13/cobra"
 )
 
 var switchSecret string
 
 var switchCmd = &cobra.Command{
-	Use:   "switch <profile>",
+	Use:   "switch [profile]",
 	Short: "Quick switch to a profile and export credentials",
 	Long:  `Switch to a profile and export credentials in one command. Use with eval to set environment variables.`,
-	Args:  cobra.ExactArgs(1),
-	Example: `  # Switch to a profile
+	Args:  cobra.MaximumNArgs(1),
+	Example: `  # Switch to a profile interactively
+  eval $(cloudctl switch)
+  
+  # Switch to a specific profile
   eval $(cloudctl switch prod-admin --secret "your-secret")
   
   # Or set CLOUDCTL_SECRET environment variable
   export CLOUDCTL_SECRET="your-secret"
   eval $(cloudctl switch prod-admin)`,
 	Run: func(cmd *cobra.Command, args []string) {
-		profile := args[0]
+		var profile string
 
-		if switchSecret == "" {
-			fmt.Println("❌ Encryption secret required")
-			fmt.Println("\n💡 Set the secret:")
-			fmt.Println("   export CLOUDCTL_SECRET=\"your-32-char-encryption-key\"")
-			fmt.Println("   eval $(cloudctl switch", profile, ")")
+		if len(args) == 0 {
+			// Interactive mode
+			profiles, err := internal.ListProfiles()
+			if err != nil || len(profiles) == 0 {
+				fmt.Fprintln(os.Stderr, "❌ No profiles found. Create one first.")
+				return
+			}
+
+			selected, err := ui.SelectProfile("Select Profile", profiles)
+			if err != nil {
+				// User cancelled or error
+				return
+			}
+			profile = selected
+		} else {
+			profile = args[0]
+		}
+
+		secret, err := internal.GetSecret(switchSecret)
+		if err != nil {
+			// Ask if user wants to setup keychain if on macOS
+			if internal.IsMacOS() {
+				// TODO: We could add an interactive prompt here to setup keychain
+				// For now, just show the standard error
+			}
+
+			fmt.Fprintf(os.Stderr, "❌ Encryption secret required\n")
+			fmt.Fprintf(os.Stderr, "\n💡 Set the secret:\n")
+			fmt.Fprintf(os.Stderr, "   export CLOUDCTL_SECRET=\"your-32-char-encryption-key\"\n")
+			fmt.Fprintf(os.Stderr, "   eval $(cloudctl switch %s)\n", profile)
 			return
 		}
 
-		s, err := internal.LoadCredentials(profile, switchSecret)
+		s, err := internal.LoadCredentials(profile, secret)
 		if err != nil {
-			fmt.Printf("❌ Profile '%s' not found\n", profile)
-			
+			fmt.Fprintf(os.Stderr, "❌ Profile '%s' not found\n", profile)
+
 			// List available profiles
 			if profiles, _ := internal.ListProfiles(); len(profiles) > 0 {
-				fmt.Println("\n💡 Available profiles:")
+				fmt.Fprintf(os.Stderr, "\n💡 Available profiles:\n")
 				for _, p := range profiles {
-					fmt.Printf("   • %s\n", p)
+					fmt.Fprintf(os.Stderr, "   • %s\n", p)
 				}
 			} else {
-				fmt.Println("\n💡 No sessions found. Create one with:")
-				fmt.Println("   cloudctl login --source <profile> --profile <name> --role <role-arn>")
+				fmt.Fprintf(os.Stderr, "\n💡 No sessions found. Create one with:\n")
+				fmt.Fprintf(os.Stderr, "   cloudctl login --source <profile> --profile <name> --role <role-arn>\n")
 			}
 			return
 		}
