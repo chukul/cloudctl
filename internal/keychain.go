@@ -77,6 +77,34 @@ func SetupKeychain() (string, error) {
 	return secret, nil
 }
 
+// StoreKeychainSecret stores a specific secret into the keychain
+func StoreKeychainSecret(secret string) error {
+	if runtime.GOOS != "darwin" {
+		return fmt.Errorf("keychain integration is only supported on macOS")
+	}
+
+	// Store in keychain
+	item := keychain.NewItem()
+	item.SetSecClass(keychain.SecClassGenericPassword)
+	item.SetService(KeychainService)
+	item.SetAccount(KeychainAccount)
+	item.SetLabel("CloudCtl Encryption Key")
+	item.SetAccessGroup(KeychainService)
+	item.SetData([]byte(secret))
+	item.SetSynchronizable(keychain.SynchronizableNo)
+	item.SetAccessible(keychain.AccessibleWhenUnlocked)
+
+	// Remove existing if any
+	keychain.DeleteItem(item)
+
+	// Add new
+	if err := keychain.AddItem(item); err != nil {
+		return fmt.Errorf("failed to save to keychain: %w", err)
+	}
+
+	return nil
+}
+
 func getKeychainSecret() (string, error) {
 	query := keychain.NewItem()
 	query.SetSecClass(keychain.SecClassGenericPassword)

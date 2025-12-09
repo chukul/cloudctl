@@ -251,6 +251,22 @@ This allows you to use `cloudctl` without manually setting the `CLOUDCTL_SECRET`
 2. Follow the prompt to generate and store a secure key.
 3. Future commands will use Touch ID / User Password to unlock the key automatically.
 
+### 🛡️ Backup & Restore
+Since your credentials are encrypted, you must backup your key!
+
+```bash
+# Reveal your key (requires Touch ID)
+cloudctl secret show
+
+# Save the output to your password manager
+```
+
+To restore on a new machine (or if you reinstall OS):
+```bash
+# Import your backed-up key into Keychain
+cloudctl secret import <your-key>
+```
+
 ## 📱 MFA Device Management
 
 Save your MFA devices with friendly names to avoid typing ARNs.
