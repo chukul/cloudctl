@@ -80,10 +80,44 @@ var loginCmd = &cobra.Command{
 		}
 
 		if roleArn == "" {
-			var err error
-			roleArn, err = ui.GetInput("Enter Role ARN", "arn:aws:iam::123456789012:role/RoleName", false)
-			if err != nil {
-				return
+			// Check for saved roles
+			roles, _ := internal.ListRoles()
+			if len(roles) > 0 {
+				var roleNames []string
+				for name, arn := range roles {
+					roleNames = append(roleNames, fmt.Sprintf("%s (%s)", name, arn))
+				}
+
+				// Add option to enter manually
+				roleNames = append(roleNames, "Enter Role ARN Manually...")
+
+				selected, err := ui.SelectProfile("Select Role to Assume", roleNames)
+				if err == nil {
+					if selected == "Enter Role ARN Manually..." {
+						// proceed to prompt
+					} else {
+						// Parse "name (arn)"
+						parts := strings.SplitN(selected, " (", 2)
+						// Trim matching closing paren
+						rawArn := strings.TrimSuffix(parts[1], ")")
+						roleArn = rawArn
+						fmt.Printf("🎭 Selected Role: %s\n", selected)
+					}
+				}
+			}
+
+			if roleArn == "" {
+				var err error
+				roleArn, err = ui.GetInput("Enter Role ARN", "arn:aws:iam::123456789012:role/RoleName", false)
+				if err != nil {
+					return
+				}
+			}
+		} else {
+			// Check if provided roleArn is an alias
+			if realArn, found := internal.GetRole(roleArn); found {
+				fmt.Printf("🎭 Using stored role alias '%s'\n", roleArn)
+				roleArn = realArn
 			}
 		}
 

@@ -267,6 +267,25 @@ To restore on a new machine (or if you reinstall OS):
 cloudctl secret import <your-key>
 ```
 
+# Import your backed-up key into Keychain
+cloudctl secret import <your-key>
+```
+
+## 🎭 IAM Role Management
+
+Save frequently used IAM Roles with friendly aliases.
+
+```bash
+# Add a role alias
+cloudctl role add prod-admin arn:aws:iam::123456789012:role/ProductionAdmin
+
+# List saved roles
+cloudctl role list
+
+# Use alias in login
+cloudctl login --source default --profile prod --role prod-admin
+```
+
 ## 📱 MFA Device Management
 
 Save your MFA devices with friendly names to avoid typing ARNs.

@@ -11,6 +11,7 @@ import (
 
 var storePath = filepath.Join(os.Getenv("HOME"), ".cloudctl", "credentials.json")
 var mfaStorePath = filepath.Join(os.Getenv("HOME"), ".cloudctl", "mfa.json")
+var roleStorePath = filepath.Join(os.Getenv("HOME"), ".cloudctl", "roles.json")
 
 // SaveCredentials encrypts and stores AWS session
 func SaveCredentials(profile string, creds *AWSSession, key string) error {
@@ -252,5 +253,59 @@ func RemoveMFADevice(name string) error {
 func GetMFADevice(name string) (string, bool) {
 	devices, _ := ListMFADevices()
 	arn, ok := devices[name]
+	return arn, ok
+}
+
+// IAM Role Storage
+
+func SaveRole(name, arn string) error {
+	os.MkdirAll(filepath.Dir(roleStorePath), 0700)
+
+	roles := make(map[string]string)
+	if b, err := os.ReadFile(roleStorePath); err == nil {
+		json.Unmarshal(b, &roles)
+	}
+
+	roles[name] = arn
+
+	b, _ := json.MarshalIndent(roles, "", "  ")
+	return os.WriteFile(roleStorePath, b, 0600)
+}
+
+func ListRoles() (map[string]string, error) {
+	roles := make(map[string]string)
+	b, err := os.ReadFile(roleStorePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return roles, nil
+		}
+		return nil, err
+	}
+
+	if err := json.Unmarshal(b, &roles); err != nil {
+		return nil, err
+	}
+	return roles, nil
+}
+
+func RemoveRole(name string) error {
+	roles, err := ListRoles()
+	if err != nil {
+		return err
+	}
+
+	if _, ok := roles[name]; !ok {
+		return fmt.Errorf("role '%s' not found", name)
+	}
+
+	delete(roles, name)
+
+	b, _ := json.MarshalIndent(roles, "", "  ")
+	return os.WriteFile(roleStorePath, b, 0600)
+}
+
+func GetRole(name string) (string, bool) {
+	roles, _ := ListRoles()
+	arn, ok := roles[name]
 	return arn, ok
 }
