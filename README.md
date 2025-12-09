@@ -384,20 +384,17 @@ ccs prod-admin
 ### `console`
 
 Generate AWS Console sign-in URL from stored session.
+Generate a sign-in URL for the AWS Console.
 
-**Flags:**
-- `--profile` - Profile to generate console URL for (required)
-- `--secret` - Encryption key to decrypt credentials (or set CLOUDCTL_SECRET env var)
-- `--region` - AWS region for console (default: ap-southeast-1)
-- `--open` - Automatically open URL in browser
-
-**Usage:**
 ```bash
-# Generate and open console
-cloudctl console --profile prod-admin --open
+# Generate URL and print to stdout
+cloudctl console --profile <name>
 
-# Or use the alias
-ccc --profile prod-admin --open
+# Generate and automatically open in default browser
+cloudctl console --profile <name> --open
+
+# Interactive mode (select profile from list)
+cloudctl console --open
 ```
 
 **Note:** MFA sessions cannot be used for console access. Use an assumed role profile instead.

@@ -11,6 +11,7 @@ import (
 	"runtime"
 
 	"github.com/chukul/cloudctl/internal"
+	"github.com/chukul/cloudctl/internal/ui"
 	"github.com/spf13/cobra"
 )
 
@@ -23,17 +24,31 @@ var consoleCmd = &cobra.Command{
 	Use:   "console",
 	Short: "Generate AWS console sign-in URL from stored session",
 	Run: func(cmd *cobra.Command, args []string) {
+
 		if consoleProfile == "" {
-			fmt.Println("❌ You must specify --profile")
+			profiles, err := internal.ListProfiles()
+			if err != nil || len(profiles) == 0 {
+				fmt.Println("❌ No profiles found. Create one first.")
+				return
+			}
+
+			selected, err := ui.SelectProfile("Select Profile", profiles)
+			if err != nil {
+				return
+			}
+			consoleProfile = selected
+		}
+
+		// Get secret from flag, env, or keychain
+		secret, err := internal.GetSecret(consoleSecret)
+		if err != nil {
+			fmt.Println("❌ Encryption secret required")
+			fmt.Println("\n💡 Set the secret:")
+			fmt.Println("   export CLOUDCTL_SECRET=\"your-32-char-encryption-key\"")
 			return
 		}
 
-		if consoleSecret == "" {
-			fmt.Println("❌ You must specify --secret to decrypt credentials")
-			return
-		}
-
-		s, err := internal.LoadCredentials(consoleProfile, consoleSecret)
+		s, err := internal.LoadCredentials(consoleProfile, secret)
 		if err != nil {
 			fmt.Printf("❌ Failed to load session for profile '%s': %v\n", consoleProfile, err)
 			return
