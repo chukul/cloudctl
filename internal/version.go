@@ -23,8 +23,8 @@ type GitHubRelease struct {
 }
 
 type VersionCheck struct {
-	LastChecked time.Time `json:"last_checked"`
-	LatestVersion string  `json:"latest_version"`
+	LastChecked   time.Time `json:"last_checked"`
+	LatestVersion string    `json:"latest_version"`
 }
 
 // CheckForUpdates checks if a new version is available (non-blocking)
@@ -98,6 +98,6 @@ func saveLastCheck(version string) {
 		LastChecked:   time.Now(),
 		LatestVersion: version,
 	}
-	data, _ := json.MarshalIndent(check, "", "  ")
+	data, _ := json.Marshal(check)
 	os.WriteFile(cachePath, data, 0600)
 }
