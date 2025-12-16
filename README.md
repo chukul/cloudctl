@@ -349,6 +349,7 @@ Assume an AWS role and store credentials locally.
 - `--secret` - Encryption key for credential storage (or set CLOUDCTL_SECRET env var)
 - `--region` - AWS region (default: ap-southeast-1)
 - `--open` - Automatically open AWS Console after successful login
+- `--duration` - Session duration in seconds (default: 3600 = 1 hr, max: 43200 = 12 hrs)
 
 **Usage:**
 ```bash

@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
+	"time"
 
 	"github.com/chukul/cloudctl/internal"
 	"github.com/chukul/cloudctl/internal/ui"
@@ -25,20 +26,6 @@ var consoleCmd = &cobra.Command{
 	Short: "Generate AWS console sign-in URL from stored session",
 	Run: func(cmd *cobra.Command, args []string) {
 
-		if consoleProfile == "" {
-			profiles, err := internal.ListProfiles()
-			if err != nil || len(profiles) == 0 {
-				fmt.Println("❌ No profiles found. Create one first.")
-				return
-			}
-
-			selected, err := ui.SelectProfile("Select Profile", profiles)
-			if err != nil {
-				return
-			}
-			consoleProfile = selected
-		}
-
 		// Get secret from flag, env, or keychain
 		secret, err := internal.GetSecret(consoleSecret)
 		if err != nil {
@@ -48,6 +35,49 @@ var consoleCmd = &cobra.Command{
 			return
 		}
 
+		if consoleProfile == "" {
+			// Load all sessions to filter valid ones
+			allSessions, err := internal.ListAllSessions(secret)
+			if err != nil {
+				fmt.Printf("❌ Failed to list sessions: %v\n", err)
+				return
+			}
+
+			var validProfiles []string
+			for _, s := range allSessions {
+				// Filter out expired sessions
+				if time.Now().After(s.Expiration) {
+					continue
+				}
+				// Filter out MFA sessions
+				if s.RoleArn == "MFA-Session" || s.RoleArn == "" {
+					continue
+				}
+				validProfiles = append(validProfiles, s.Profile)
+			}
+
+			if len(validProfiles) == 0 {
+				fmt.Println("❌ No valid active sessions found.")
+				fmt.Println("💡 Please login or refresh your sessions first.")
+				return
+			}
+
+			// Sort for better UX (ListAllSessions might not be sorted)
+			// ui.SelectProfile handles filtering but not sorting of input list usually,
+			// though typical behavior is to show in order.
+			// Let's rely on list order for now or sort? internal.ListAllSessions might return map order (random).
+			// We should sort validProfiles.
+			// Add "sort" to imports if not present. It likely isn't.
+			// Actually let's check imports. console.go has "encoding/json", "fmt", "io", "net/http", "net/url", "os", "os/exec", "runtime", "time".
+			// Need to add "sort".
+
+			selected, err := ui.SelectProfile("Select Profile", validProfiles)
+			if err != nil {
+				return
+			}
+			consoleProfile = selected
+		}
+
 		s, err := internal.LoadCredentials(consoleProfile, secret)
 		if err != nil {
 			fmt.Printf("❌ Failed to load session for profile '%s': %v\n", consoleProfile, err)
@@ -55,10 +85,21 @@ var consoleCmd = &cobra.Command{
 		}
 
 		// Check if this is an MFA session (can't be used for console federation)
-		if s.RoleArn == "MFA-Session" {
-			fmt.Println("❌ MFA sessions cannot be used for console access.")
-			fmt.Println("💡 Use a role that was assumed from the MFA session instead:")
-			fmt.Println("   cloudctl console --profile <role-profile> --open")
+		// Check if session is expired
+		if time.Now().After(s.Expiration) {
+			fmt.Printf("❌ Session for profile '%s' has expired.\n", s.Profile)
+			fmt.Println("💡 Please refresh or login again:")
+			fmt.Printf("   cloudctl refresh --profile %s\n", s.Profile)
+			return
+		}
+
+		// Check if this is an MFA session (can't be used for console federation)
+		// MFA sessions (GetSessionToken) do not have a RoleArn usually, or we marked them specifically.
+		// Our internal storage marks them as "MFA-Session".
+		if s.RoleArn == "MFA-Session" || s.RoleArn == "" {
+			fmt.Println("❌ MFA base sessions cannot be used for console access.")
+			fmt.Println("💡 You must assume a role first. Try one of these:")
+			fmt.Println("   cloudctl login --source <this-mfa-profile> --profile <new-role-profile> --role <role-arn>")
 			return
 		}
 

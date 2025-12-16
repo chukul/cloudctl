@@ -33,6 +33,7 @@ var (
 	secretKey     string
 	region        string
 	openConsole   bool
+	loginDuration int32
 	sessionDir    = filepath.Join(os.Getenv("HOME"), ".cloudctl", "sessions")
 )
 
@@ -288,7 +289,7 @@ var loginCmd = &cobra.Command{
 		// Assume target IAM role with spinner
 		stsClient := sts.NewFromConfig(cfg)
 		sessionName := profile // Use profile name as session name
-		duration := int32(3600)
+		duration := loginDuration
 
 		res, err := ui.Spin(fmt.Sprintf("Assuming role %s...", roleArn), func() (any, error) {
 			return stsClient.AssumeRole(ctx, &sts.AssumeRoleInput{
@@ -465,5 +466,6 @@ func init() {
 	loginCmd.Flags().StringVar(&secretKey, "secret", os.Getenv("CLOUDCTL_SECRET"), "Optional secret for encryption (or set CLOUDCTL_SECRET env var)")
 	loginCmd.Flags().StringVar(&region, "region", "ap-southeast-1", "AWS region (default: ap-southeast-1)")
 	loginCmd.Flags().BoolVar(&openConsole, "open", false, "Automatically open AWS Console after login")
+	loginCmd.Flags().Int32Var(&loginDuration, "duration", 3600, "Session duration in seconds (default: 3600 = 1 hr, max: 43200 = 12 hrs)")
 	rootCmd.AddCommand(loginCmd)
 }
