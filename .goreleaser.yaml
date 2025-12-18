@@ -10,7 +10,7 @@ builds:
   - id: cloudctl
     binary: cloudctl
     env:
-      - CGO_ENABLED=0
+      - CGO_ENABLED=1
     goos:
       - darwin
     goarch:
