@@ -1,12 +1,14 @@
 # .goreleaser.yaml
-# สำหรับข้อมูลเพิ่มเติม: https://goreleaser.com
+project_name: cloudctl
 
 before:
   hooks:
     - go mod tidy
 
 builds:
-  - env:
+  - id: cloudctl
+    binary: cloudctl
+    env:
       - CGO_ENABLED=0
     goos:
       - linux
@@ -16,20 +18,12 @@ builds:
       - amd64
       - arm64
     ldflags:
-      - -s -w -X github.com/chukul/cloudctl/internal.CurrentVersion={{.Version}}
+      - -s -w -X 'github.com/chukul/cloudctl/internal.CurrentVersion={{.Version}}'
     trimpath: true
 
 archives:
-  - format: tar.gz
-    # ใช้ชื่อโปรเจคในชื่อไฟล์ archive
-    name_template: >-
-      {{ .ProjectName }}_
-      {{- title .Os }}_
-      {{- if eq .Arch "amd64" }}x86_64
-      {{- else if eq .Arch "386" }}i386
-      {{- else }}{{ .Arch }}{{ end }}
-      {{- if .Arm }}v{{ .Arm }}{{ end }}
-    # เก็บเฉพาะไฟล์ binary และไฟล์สำคัญอื่นๆ
+  - name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    format: tar.gz
     files:
       - README.md
       - LICENSE*
@@ -59,7 +53,3 @@ brews:
     license: "MIT"
     install: |
       bin.install "cloudctl"
-      # (Optional) ติดตั้ง shell completion ถ้ามี
-      # bash_completion.install "completions/cloudctl.bash" => "cloudctl"
-      # zsh_completion.install "completions/cloudctl.zsh" => "_cloudctl"
-      # fish_completion.install "completions/cloudctl.fish"
