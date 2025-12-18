@@ -12,20 +12,18 @@ builds:
     env:
       - CGO_ENABLED=0
     goos:
-      - linux
-      - windows
       - darwin
     goarch:
       - amd64
       - arm64
-    ldflags:
-      - -s -w -X 'github.com/chukul/cloudctl/internal.CurrentVersion={{.Version}}'
     flags:
       - -trimpath
+    ldflags:
+      - -s -w -X 'github.com/chukul/cloudctl/internal.CurrentVersion={{.Version}}'
 
 archives:
   - name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
-    format: tar.gz
+    formats: [tar.gz]
     files:
       - README.md
       - LICENSE*
@@ -33,7 +31,7 @@ archives:
 checksum:
   name_template: 'checksums.txt'
 
-snapshot:
+snapshots:
   name_template: "{{ .Tag }}-next"
 
 changelog:
