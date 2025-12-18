@@ -11,8 +11,8 @@ import (
 	"time"
 )
 
-const (
-	CurrentVersion = "v1.0.0" // Update this with each release
+var (
+	CurrentVersion = "v1.0.0" // Will be overwritten by ldflags during build
 	GitHubAPI      = "https://api.github.com/repos/chukul/cloudctl/releases/latest"
 	CheckInterval  = 24 * time.Hour
 )

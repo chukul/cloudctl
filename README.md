@@ -41,6 +41,16 @@ A lightweight CLI tool for securely managing AWS AssumeRole sessions with MFA su
 - AWS CLI configured with at least one profile
 - Valid AWS credentials
 
+### Homebrew (macOS)
+
+```bash
+# Add the tap
+brew tap chukul/homebrew-tap
+
+# Install cloudctl
+brew install cloudctl
+```
+
 ### Build from Source
 
 ```bash

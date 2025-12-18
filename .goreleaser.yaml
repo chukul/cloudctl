@@ -1,0 +1,65 @@
+# .goreleaser.yaml
+# สำหรับข้อมูลเพิ่มเติม: https://goreleaser.com
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - windows
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w -X github.com/chukul/cloudctl/internal.CurrentVersion={{.Version}}
+    trimpath: true
+
+archives:
+  - format: tar.gz
+    # ใช้ชื่อโปรเจคในชื่อไฟล์ archive
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "386" }}i386
+      {{- else }}{{ .Arch }}{{ end }}
+      {{- if .Arm }}v{{ .Arm }}{{ end }}
+    # เก็บเฉพาะไฟล์ binary และไฟล์สำคัญอื่นๆ
+    files:
+      - README.md
+      - LICENSE*
+
+checksum:
+  name_template: 'checksums.txt'
+
+snapshot:
+  name_template: "{{ .Tag }}-next"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+
+brews:
+  - name: cloudctl
+    repository:
+      owner: chukul
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    directory: Formula
+    homepage: "https://github.com/chukul/cloudctl"
+    description: "Secure AWS AssumeRole session manager with MFA & Touch ID"
+    license: "MIT"
+    install: |
+      bin.install "cloudctl"
+      # (Optional) ติดตั้ง shell completion ถ้ามี
+      # bash_completion.install "completions/cloudctl.bash" => "cloudctl"
+      # zsh_completion.install "completions/cloudctl.zsh" => "_cloudctl"
+      # fish_completion.install "completions/cloudctl.fish"
