@@ -259,15 +259,13 @@ func GetMFADevice(name string) (string, bool) {
 // IAM Role Storage
 
 func SaveRole(name, arn string) error {
-	os.MkdirAll(filepath.Dir(roleStorePath), 0700)
-
-	roles := make(map[string]string)
-	if b, err := os.ReadFile(roleStorePath); err == nil {
-		json.Unmarshal(b, &roles)
-	}
-
+	roles, _ := ListRoles()
 	roles[name] = arn
+	return SaveAllRoles(roles)
+}
 
+func SaveAllRoles(roles map[string]string) error {
+	os.MkdirAll(filepath.Dir(roleStorePath), 0700)
 	b, _ := json.MarshalIndent(roles, "", "  ")
 	return os.WriteFile(roleStorePath, b, 0600)
 }
@@ -300,8 +298,18 @@ func RemoveRole(name string) error {
 
 	delete(roles, name)
 
-	b, _ := json.MarshalIndent(roles, "", "  ")
-	return os.WriteFile(roleStorePath, b, 0600)
+	if len(roles) == 0 {
+		return ClearAllRoles()
+	}
+
+	return SaveAllRoles(roles)
+}
+
+func ClearAllRoles() error {
+	if _, err := os.Stat(roleStorePath); err == nil {
+		return os.Remove(roleStorePath)
+	}
+	return nil
 }
 
 func GetRole(name string) (string, bool) {

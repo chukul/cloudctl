@@ -1,12 +1,20 @@
 package cmd
 
 import (
+	"bufio"
+	"encoding/json"
 	"fmt"
+	"os"
 	"sort"
 	"strings"
 
 	"github.com/chukul/cloudctl/internal"
+	"github.com/chukul/cloudctl/internal/ui"
 	"github.com/spf13/cobra"
+)
+
+var (
+	roleRemoveAll bool
 )
 
 var roleCmd = &cobra.Command{
@@ -71,12 +79,50 @@ var roleAddCmd = &cobra.Command{
 }
 
 var roleRemoveCmd = &cobra.Command{
-	Use:     "remove <name>",
+	Use:     "remove [name]",
 	Aliases: []string{"rm", "delete"},
-	Short:   "Remove an IAM Role alias",
-	Args:    cobra.ExactArgs(1),
+	Short:   "Remove one or all IAM Role aliases",
+	Args:    cobra.MaximumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		name := args[0]
+		if roleRemoveAll {
+			fmt.Print("⚠️  This will remove ALL saved IAM Role aliases. Type 'yes' to confirm: ")
+			reader := bufio.NewReader(os.Stdin)
+			input, _ := reader.ReadString('\n')
+			if strings.TrimSpace(input) != "yes" {
+				fmt.Println("❌ Operation cancelled.")
+				return
+			}
+
+			if err := internal.ClearAllRoles(); err != nil {
+				fmt.Printf("❌ Failed to clear roles: %v\n", err)
+				return
+			}
+			fmt.Println("✅ All IAM Role aliases removed successfully.")
+			return
+		}
+
+		var name string
+		if len(args) == 0 {
+			roles, err := internal.ListRoles()
+			if err != nil || len(roles) == 0 {
+				fmt.Println("📭 No IAM Roles found.")
+				return
+			}
+
+			var names []string
+			for k := range roles {
+				names = append(names, k)
+			}
+			sort.Strings(names)
+
+			selected, err := ui.SelectProfile("Select Role Alias to Remove", names)
+			if err != nil {
+				return
+			}
+			name = selected
+		} else {
+			name = args[0]
+		}
 
 		if err := internal.RemoveRole(name); err != nil {
 			fmt.Printf("❌ Failed to remove role: %v\n", err)
@@ -87,9 +133,72 @@ var roleRemoveCmd = &cobra.Command{
 	},
 }
 
+var roleExportCmd = &cobra.Command{
+	Use:   "export [file.json]",
+	Short: "Export all IAM Role aliases to JSON",
+	Run: func(cmd *cobra.Command, args []string) {
+		roles, err := internal.ListRoles()
+		if err != nil {
+			fmt.Printf("❌ Failed to load roles: %v\n", err)
+			return
+		}
+
+		b, _ := json.MarshalIndent(roles, "", "  ")
+
+		if len(args) > 0 {
+			err := os.WriteFile(args[0], b, 0644)
+			if err != nil {
+				fmt.Printf("❌ Failed to write file: %v\n", err)
+				return
+			}
+			fmt.Printf("✅ Exported %d roles to %s\n", len(roles), args[0])
+		} else {
+			fmt.Println(string(b))
+		}
+	},
+}
+
+var roleImportCmd = &cobra.Command{
+	Use:   "import <file.json>",
+	Short: "Import IAM Role aliases from JSON",
+	Args:  cobra.ExactArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		filePath := args[0]
+		b, err := os.ReadFile(filePath)
+		if err != nil {
+			fmt.Printf("❌ Failed to read file: %v\n", err)
+			return
+		}
+
+		var importedRoles map[string]string
+		if err := json.Unmarshal(b, &importedRoles); err != nil {
+			fmt.Printf("❌ Failed to parse JSON: %v\n", err)
+			return
+		}
+
+		currentRoles, _ := internal.ListRoles()
+		mergedCount := 0
+		for name, arn := range importedRoles {
+			currentRoles[name] = arn
+			mergedCount++
+		}
+
+		if err := internal.SaveAllRoles(currentRoles); err != nil {
+			fmt.Printf("❌ Failed to save roles: %v\n", err)
+			return
+		}
+
+		fmt.Printf("✅ Successfully imported/merged %d roles\n", mergedCount)
+	},
+}
+
 func init() {
+	roleRemoveCmd.Flags().BoolVar(&roleRemoveAll, "all", false, "Remove all stored IAM Role aliases")
+
 	roleCmd.AddCommand(roleListCmd)
 	roleCmd.AddCommand(roleAddCmd)
 	roleCmd.AddCommand(roleRemoveCmd)
+	roleCmd.AddCommand(roleExportCmd)
+	roleCmd.AddCommand(roleImportCmd)
 	rootCmd.AddCommand(roleCmd)
 }

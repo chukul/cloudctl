@@ -3,14 +3,18 @@ package internal
 import (
 	"context"
 	"fmt"
-	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 )
 
-func AssumeRole(profile, roleArn, sessionName string) (*AWSSession, error) {
-	cfg, err := config.LoadDefaultConfig(context.TODO(), config.WithSharedConfigProfile(profile))
+func AssumeRole(profile, roleArn, sessionName, region string) (*AWSSession, error) {
+	cfg, err := config.LoadDefaultConfig(context.TODO(),
+		config.WithRegion(region),
+		config.WithSharedConfigProfile(profile),
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -34,24 +38,66 @@ func AssumeRole(profile, roleArn, sessionName string) (*AWSSession, error) {
 	}, nil
 }
 
-// New function
-func RefreshIfExpired(sess *AWSSession, secret string) (*AWSSession, bool, error) {
-	now := time.Now()
-	if sess.Expiration.After(now.Add(2 * time.Minute)) {
-		return sess, false, nil // still valid
+// PerformRefresh silenty refreshes a single session if possible
+func PerformRefresh(s *AWSSession, secret, region string) (*AWSSession, error) {
+	if s.SourceProfile == "" || s.RoleArn == "MFA-Session" {
+		return nil, fmt.Errorf("session cannot be refreshed (no source or MFA session)")
 	}
 
-	fmt.Println("🔁 Session expired — refreshing credentials...")
+	ctx := context.TODO()
+	var cfg aws.Config
+	var err error
 
-	newSess, err := AssumeRole(sess.Profile, sess.RoleArn, sess.SessionName)
+	// Load source credentials
+	sourceSession, sourceErr := LoadCredentials(s.SourceProfile, secret)
+	if sourceErr == nil {
+		// Source is a cloudctl session
+		cfg, err = config.LoadDefaultConfig(ctx,
+			config.WithRegion(region),
+			config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(
+				sourceSession.AccessKey,
+				sourceSession.SecretKey,
+				sourceSession.SessionToken,
+			)),
+		)
+	} else {
+		// Source is standard AWS profile
+		cfg, err = config.LoadDefaultConfig(ctx,
+			config.WithRegion(region),
+			config.WithSharedConfigProfile(s.SourceProfile),
+		)
+	}
+
 	if err != nil {
-		return sess, false, err
+		return nil, fmt.Errorf("failed to load source: %w", err)
 	}
 
-	err = SaveCredentials(sess.Profile, newSess, secret)
+	stsClient := sts.NewFromConfig(cfg)
+	sessionName := s.Profile
+	duration := int32(3600)
+
+	res, err := stsClient.AssumeRole(ctx, &sts.AssumeRoleInput{
+		RoleArn:         &s.RoleArn,
+		RoleSessionName: &sessionName,
+		DurationSeconds: &duration,
+	})
 	if err != nil {
-		return sess, false, err
+		return nil, err
 	}
 
-	return newSess, true, nil
+	newSession := &AWSSession{
+		Profile:       s.Profile,
+		AccessKey:     *res.Credentials.AccessKeyId,
+		SecretKey:     *res.Credentials.SecretAccessKey,
+		SessionToken:  *res.Credentials.SessionToken,
+		Expiration:    *res.Credentials.Expiration,
+		RoleArn:       s.RoleArn,
+		SourceProfile: s.SourceProfile,
+	}
+
+	if err := SaveCredentials(s.Profile, newSession, secret); err != nil {
+		return nil, err
+	}
+
+	return newSession, nil
 }

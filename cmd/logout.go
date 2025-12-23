@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/chukul/cloudctl/internal"
+	"github.com/chukul/cloudctl/internal/ui"
 	"github.com/spf13/cobra"
 )
 
@@ -27,7 +28,17 @@ var logoutCmd = &cobra.Command{
 	Short: "Remove stored credentials for a profile or all profiles",
 	Run: func(cmd *cobra.Command, args []string) {
 		if !logoutAll && logoutProfile == "" {
-			log.Fatal("Error: specify --profile <name> or --all")
+			profiles, err := internal.ListProfiles()
+			if err != nil || len(profiles) == 0 {
+				fmt.Println("❌ No stored profiles found.")
+				return
+			}
+
+			selected, err := ui.SelectProfile("Select Profile to Logout", profiles)
+			if err != nil {
+				return
+			}
+			logoutProfile = selected
 		}
 
 		if logoutAll {
