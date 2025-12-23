@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
@@ -63,6 +64,7 @@ Use this session as source profile for subsequent role assumptions without re-en
 				for name, arn := range devices {
 					deviceNames = append(deviceNames, fmt.Sprintf("%s (%s)", name, arn))
 				}
+				sort.Strings(deviceNames)
 
 				selected, err := ui.SelectProfile("Select MFA Device", deviceNames)
 				if err == nil {

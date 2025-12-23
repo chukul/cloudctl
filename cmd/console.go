@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
+	"sort"
 	"time"
 
 	"github.com/chukul/cloudctl/internal"
@@ -61,15 +62,7 @@ var consoleCmd = &cobra.Command{
 				fmt.Println("💡 Please login or refresh your sessions first.")
 				return
 			}
-
-			// Sort for better UX (ListAllSessions might not be sorted)
-			// ui.SelectProfile handles filtering but not sorting of input list usually,
-			// though typical behavior is to show in order.
-			// Let's rely on list order for now or sort? internal.ListAllSessions might return map order (random).
-			// We should sort validProfiles.
-			// Add "sort" to imports if not present. It likely isn't.
-			// Actually let's check imports. console.go has "encoding/json", "fmt", "io", "net/http", "net/url", "os", "os/exec", "runtime", "time".
-			// Need to add "sort".
+			sort.Strings(validProfiles)
 
 			selected, err := ui.SelectProfile("Select Profile", validProfiles)
 			if err != nil {

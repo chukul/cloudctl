@@ -1,11 +1,12 @@
 # CloudCtl
 
-```
-   ________                _________ __  __
-  / ____/ /___  __  ______/ / ____// /_/ /
- / /   / / __ \/ / / / __  / /    / __/ / 
-/ /___/ / /_/ / /_/ / /_/ / /___ / /_/ /  
-\____/_/\____/\__,_/\__,_/\____/ \__/_/   
+```text
+   ██████╗██╗      ██████╗ ██╗   ██╗██████╗  ██████╗████████╗██╗     
+  ██╔════╝██║     ██╔═══██╗██║   ██║██╔══██╗██╔════╝╚══██╔══╝██║     
+  ██║     ██║     ██║   ██║██║   ██║██║  ██║██║        ██║   ██║     
+  ██║     ██║     ██║   ██║██║   ██║██║  ██║██║        ██║   ██║     
+  ╚██████╗███████╗╚██████╔╝╚██████╔╝██████╔╝╚██████╗   ██║   ███████╗
+   ╚═════╝╚══════╝ ╚═════╝  ╚═════╝ ╚═════╝  ╚═════╝   ╚═╝   ╚══════╝
 ```
 
 A lightweight CLI tool for securely managing AWS AssumeRole sessions with MFA support and encrypted credential storage.
@@ -14,23 +15,18 @@ A lightweight CLI tool for securely managing AWS AssumeRole sessions with MFA su
 
 - 🔐 **Secure Credential Storage** - Encrypt AWS credentials with AES-256-GCM
 - 🎯 **AssumeRole Support** - Easily assume IAM roles with MFA
-- 🌐 **Console Access** - **Interactive TUI**: Modern, interactive prompts for profile selection and login.
+- 🎨 **Enhanced Gradient CLI** - Beautiful 24-bit color gradient UI
+- 🤖 **Auto-Refresh Daemon** - Background service to keep sessions alive
+- 📂 **Role Aliasing** - Bulk import/export IAM roles via JSON
+- 🌐 **Console Access** - Generate AWS console URLs instantly
+- **Interactive TUI**: Modern, interactive prompts for profile selection and login.
 - **MFA Device Management**: Save and alias your MFA devices (`cloudctl mfa`).
 - **Touch ID Support**: Securely store encryption keys in macOS Keychain for passwordless operation.
 - **Credential Sync**: Export assumed roles to `~/.aws/credentials` for compatibility with external tools (Terraform, VS Code, etc.).
-- **Secure Storage**: Credentials are encrypted using AES-256-GCM (hashed keys).
 - **Session Management**: List, refresh, and switch between multiple active sessions.
-- 🔑 **MFA Support** - Built-in multi-factor authentication support
 - 🔄 **MFA Session Caching** - Enter MFA once, assume unlimited roles for 12 hours
-- 🌍 **Region Support** - Default region configuration (ap-southeast-1)
-- 🚀 **Quick Switch** - Fast profile switching with one command
-- 🎨 **Enhanced Status Display** - Icons (🟢🟡🔴🔒), grouped sessions, account ID extraction, current session highlighting
-- 💡 **Smart Error Messages** - Helpful troubleshooting tips with available profiles and examples
-- 💻 **Shell Integration** - Display current session in your shell prompt
-- 🔄 **Auto Refresh** - Renew sessions before they expire with bulk operations
-- ⚡ **Shell Init** - One-command setup for seamless shell integration
-- 🕐 **Local Timezone** - All timestamps display in your local timezone
-- 🏷️ **Static Session Names** - Profile names shown in AWS Console instead of random IDs
+-  **Shell Integration** - Display current session in your shell prompt
+-  **Local Timezone** - All timestamps display in your local timezone
 - 🔒 **Masked MFA Input** - Asterisk display (`******`) for MFA codes with backspace support
 
 ## Installation
@@ -204,36 +200,34 @@ unset AWS_PROFILE
 eval $(cloudctl switch prod-admin)
 ```
 
-### 5. Open AWS Console
+### 6. Auto-Refresh Daemon (macOS)
 
-Generate and open AWS Console in your browser:
+Keep your sessions alive automatically without manual intervention.
 
 ```bash
-# Open console in default region (ap-southeast-1)
-cloudctl console --profile prod-admin --secret "1234567890ABCDEF1234567890ABCDEF" --open
+# 1. Setup automatic startup (macOS only)
+cloudctl daemon setup
+launchctl load ~/Library/LaunchAgents/com.chukul.cloudctl.plist
 
-# Open console in specific region
-cloudctl console --profile prod-admin --secret "1234567890ABCDEF1234567890ABCDEF" --region us-east-1 --open
+# 2. Start/Stop manually
+cloudctl daemon start
+cloudctl daemon stop
 
-# Or use the alias (if init is configured)
-ccc --profile prod-admin --open
+# 3. Check status and logs
+cloudctl daemon status
+cloudctl daemon logs
 ```
 
-**Note:** MFA sessions cannot be used for console access. Use an assumed role profile instead.
+### 7. Refresh Sessions
 
-### 6. Refresh Sessions
-
-Refresh sessions before they expire:
+Refresh sessions manually before they expire:
 
 ```bash
 # Refresh single profile
-cloudctl refresh --profile prod-admin --secret "1234567890ABCDEF1234567890ABCDEF"
+cloudctl refresh --profile prod-admin --secret "your-secret"
 
 # Refresh all active sessions
-cloudctl refresh --all --secret "1234567890ABCDEF1234567890ABCDEF"
-
-# Or use the alias (if init is configured)
-ccr --all
+cloudctl refresh --all --secret "your-secret"
 ```
 
 **Note:** 
@@ -277,10 +271,6 @@ To restore on a new machine (or if you reinstall OS):
 cloudctl secret import <your-key>
 ```
 
-# Import your backed-up key into Keychain
-cloudctl secret import <your-key>
-```
-
 ## 🎭 IAM Role Management
 
 Save frequently used IAM Roles with friendly aliases.
@@ -291,6 +281,12 @@ cloudctl role add prod-admin arn:aws:iam::123456789012:role/ProductionAdmin
 
 # List saved roles
 cloudctl role list
+
+# Export roles to JSON
+cloudctl role export all-roles.json
+
+# Import roles from JSON (Bulk onboarding)
+cloudctl role import all-roles.json
 
 # Use alias in login
 cloudctl login --source default --profile prod --role prod-admin
@@ -721,8 +717,8 @@ This project is open source and available under the MIT License.
 
 ## Author
 
-**Chuchai Kul**  
-Email: chuchaik@outlook.com
+**Chuchai Kultanahiran**  
+Email: pong2day@gmail.com
 
 ## Acknowledgments
 

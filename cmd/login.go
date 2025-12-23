@@ -62,6 +62,7 @@ var loginCmd = &cobra.Command{
 					seen[p] = true
 				}
 			}
+			sort.Strings(allProfiles)
 
 			if len(allProfiles) > 0 {
 				selected, err := ui.SelectProfile("Select Source Profile", allProfiles)
@@ -88,6 +89,7 @@ var loginCmd = &cobra.Command{
 				for name, arn := range roles {
 					roleNames = append(roleNames, fmt.Sprintf("%s (%s)", name, arn))
 				}
+				sort.Strings(roleNames)
 
 				// Add option to enter manually
 				roleNames = append(roleNames, "Enter Role ARN Manually...")

@@ -4,9 +4,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
+	"time"
 
 	"github.com/chukul/cloudctl/internal"
+	"github.com/chukul/cloudctl/internal/ui"
 	"github.com/spf13/cobra"
 )
 
@@ -20,38 +23,77 @@ var syncCmd = &cobra.Command{
 	Long: `Export cloudctl managed sessions to the standard AWS credentials file (~/.aws/credentials).
 This allows external tools (Terraform, VS Code, etc.) to use your assumed roles directly.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		if syncSecret == "" {
-			fmt.Println("❌ You must specify --secret to decrypt credentials")
+		// Get secret from flag, env, or keychain
+		secret, err := internal.GetSecret(syncSecret)
+		if err != nil {
+			fmt.Println("❌ Encryption secret required")
+			fmt.Println("\n💡 Set the secret or use macOS Keychain:")
+			fmt.Println("   export CLOUDCTL_SECRET=\"your-32-char-encryption-key\"")
 			return
 		}
 
 		credsPath := filepath.Join(os.Getenv("HOME"), ".aws", "credentials")
 
 		// Load all sessions
-		sessions, err := internal.ListAllSessions(syncSecret)
+		allSessions, err := internal.ListAllSessions(secret)
 		if err != nil {
 			fmt.Printf("❌ Failed to load sessions: %v\n", err)
+			return
+		}
+
+		if len(allSessions) == 0 {
+			fmt.Println("📭 No stored sessions found.")
+			return
+		}
+
+		// Filter out expired sessions
+		now := time.Now()
+		var activeSessions []*internal.AWSSession
+		for _, s := range allSessions {
+			if s.Expiration.After(now) {
+				activeSessions = append(activeSessions, s)
+			}
+		}
+
+		if len(activeSessions) == 0 {
+			fmt.Println("⚠️  No active (non-expired) sessions found to sync.")
 			return
 		}
 
 		// Filter sessions if profile specified
 		var sessionsToSync []*internal.AWSSession
 		if syncAll {
-			sessionsToSync = sessions
+			sessionsToSync = activeSessions
 		} else if syncProfile != "" {
-			for _, s := range sessions {
+			for _, s := range activeSessions {
 				if s.Profile == syncProfile {
 					sessionsToSync = append(sessionsToSync, s)
 					break
 				}
 			}
 			if len(sessionsToSync) == 0 {
-				fmt.Printf("❌ Profile '%s' not found.\n", syncProfile)
+				fmt.Printf("❌ Profile '%s' not found or is expired.\n", syncProfile)
 				return
 			}
 		} else {
-			fmt.Println("❌ You must specify --profile or --all")
-			return
+			// Interactive Selection
+			var profiles []string
+			for _, s := range activeSessions {
+				profiles = append(profiles, s.Profile)
+			}
+			sort.Strings(profiles)
+
+			selected, err := ui.SelectProfile("Select Active Profile to Sync to ~/.aws/credentials", profiles)
+			if err != nil {
+				return
+			}
+
+			for _, s := range activeSessions {
+				if s.Profile == selected {
+					sessionsToSync = append(sessionsToSync, s)
+					break
+				}
+			}
 		}
 
 		if len(sessionsToSync) == 0 {
@@ -66,15 +108,16 @@ This allows external tools (Terraform, VS Code, etc.) to use your assumed roles 
 			existingLines = strings.Split(string(content), "\n")
 		}
 
-		// Remove cloudctl managed sections from existing content to avoid duplicates
-		// A robust ini parser would be better, but simple section replacement works for now
+		// Remove cloudctl managed sections and their comments
 		newLines := []string{}
 		skipSection := false
-		for _, line := range existingLines {
+		for i := 0; i < len(existingLines); i++ {
+			line := existingLines[i]
 			trimmed := strings.TrimSpace(line)
+
+			// 1. Detect section start
 			if strings.HasPrefix(trimmed, "[") && strings.HasSuffix(trimmed, "]") {
 				profileName := strings.Trim(trimmed, "[]")
-				// Check if this is one of the profiles we are syncing
 				skipSection = false
 				for _, s := range sessionsToSync {
 					if s.Profile == profileName {
@@ -83,9 +126,44 @@ This allows external tools (Terraform, VS Code, etc.) to use your assumed roles 
 					}
 				}
 			}
+
+			// 2. Identify and skip CloudCtl comments if they belong to a profile being replaced
+			if strings.HasPrefix(trimmed, "; Managed by cloudctl") {
+				foundHeader := ""
+				// Look ahead for the next profile header
+				for j := i + 1; j < len(existingLines); j++ {
+					tj := strings.TrimSpace(existingLines[j])
+					if tj == "" || strings.HasPrefix(tj, ";") {
+						continue
+					}
+					if strings.HasPrefix(tj, "[") && strings.HasSuffix(tj, "]") {
+						foundHeader = strings.Trim(tj, "[]")
+					}
+					break
+				}
+
+				if foundHeader != "" {
+					isReplacing := false
+					for _, s := range sessionsToSync {
+						if s.Profile == foundHeader {
+							isReplacing = true
+							break
+						}
+					}
+					if isReplacing {
+						continue // Skip this comment line
+					}
+				}
+			}
+
 			if !skipSection {
 				newLines = append(newLines, line)
 			}
+		}
+
+		// 3. Clean up potential trailing empty lines after filtering
+		for len(newLines) > 0 && strings.TrimSpace(newLines[len(newLines)-1]) == "" {
+			newLines = newLines[:len(newLines)-1]
 		}
 
 		// Append synced sessions
