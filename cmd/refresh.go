@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"sort"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -40,7 +41,19 @@ var refreshCmd = &cobra.Command{
 		} else if refreshProfile != "" {
 			refreshSingleSession(refreshProfile, secret)
 		} else {
-			fmt.Println("❌ You must specify either --profile or --all")
+			// Interactive Selection
+			profiles, err := internal.ListProfiles()
+			if err != nil || len(profiles) == 0 {
+				fmt.Println("📭 No stored profiles found.")
+				return
+			}
+			sort.Strings(profiles)
+
+			selected, err := ui.SelectProfile("Select Profile to Refresh", profiles)
+			if err != nil {
+				return
+			}
+			refreshSingleSession(selected, secret)
 		}
 	},
 }

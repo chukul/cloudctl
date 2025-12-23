@@ -49,7 +49,7 @@ func printLogo() {
 		fmt.Println()
 	}
 	fmt.Println("\x1b[1m  A lightweight tool for securely managing AWS sessions with MFA & Touch ID\x1b[0m")
-	fmt.Println("  Author: Chuchai Kultanahiran <chuchaik@outlook.com>")
+	fmt.Println("  Author: Chuchai Kultanahiran <pong2day@gmail.com>")
 	fmt.Println()
 }
 

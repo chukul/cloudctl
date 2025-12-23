@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"sort"
 	"strings"
 
 	"github.com/chukul/cloudctl/internal"
@@ -33,6 +34,7 @@ var logoutCmd = &cobra.Command{
 				fmt.Println("❌ No stored profiles found.")
 				return
 			}
+			sort.Strings(profiles)
 
 			selected, err := ui.SelectProfile("Select Profile to Logout", profiles)
 			if err != nil {

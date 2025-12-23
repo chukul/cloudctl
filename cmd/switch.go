@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"sort"
 
 	"github.com/chukul/cloudctl/internal"
 	"github.com/chukul/cloudctl/internal/ui"
@@ -35,6 +36,7 @@ var switchCmd = &cobra.Command{
 				fmt.Fprintln(os.Stderr, "❌ No profiles found. Create one first.")
 				return
 			}
+			sort.Strings(profiles)
 
 			selected, err := ui.SelectProfile("Select Profile", profiles)
 			if err != nil {
