@@ -14,5 +14,7 @@ type AWSSession struct {
 	SessionName   string
 	SourceProfile string // Source profile used for assuming the role
 	Region        string // AWS Region for this session
+	MfaArn        string // MFA Device ARN if used
+	Duration      int32  // Requested session duration
 	Revoked       bool   // optional flag
 }

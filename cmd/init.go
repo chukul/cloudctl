@@ -79,7 +79,8 @@ cloudctl_prompt() {
 alias ccl='cloudctl login'
 alias ccst='cloudctl status'
 alias ccr='cloudctl refresh'
-alias ccc='cloudctl console'`)
+alias ccc='cloudctl console'
+alias ccm='cloudctl mfa-login'`)
 }
 
 func printFishIntegration() {
@@ -114,7 +115,8 @@ end
 alias ccl='cloudctl login'
 alias ccst='cloudctl status'
 alias ccr='cloudctl refresh'
-alias ccc='cloudctl console'`)
+alias ccc='cloudctl console'
+alias ccm='cloudctl mfa-login'`)
 }
 
 func init() {

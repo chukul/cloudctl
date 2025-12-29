@@ -344,6 +344,8 @@ var loginCmd = &cobra.Command{
 			RoleArn:       roleArn,
 			SourceProfile: sourceProfile,
 			Region:        region,
+			MfaArn:        mfaArn,
+			Duration:      duration,
 		}
 
 		if useEncryption {

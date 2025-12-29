@@ -16,159 +16,214 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var refreshSecret string
-var refreshAll bool
-var refreshProfile string
+var (
+	refreshSecret  string
+	refreshAll     bool
+	refreshProfile string
+	forceRefresh   bool
+)
 
 var refreshCmd = &cobra.Command{
-	Use:   "refresh",
-	Short: "Refresh AWS session credentials before expiration",
-	Long:  `Renew session credentials by re-assuming the role. Can refresh a single profile or all active sessions.`,
+	Use:   "refresh [profile]",
+	Short: "Smart refresh or restore AWS sessions",
+	Long: `Automatically refreshes active sessions or restores expired ones by re-using metadata.
+If a session is still active, it attempts a silent refresh. If expired or requires MFA, it will prompt for input.`,
+	Args: cobra.MaximumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-
-		// Get secret from flag, env, or keychain
 		secret, err := internal.GetSecret(refreshSecret)
 		if err != nil {
-			fmt.Println("❌ Encryption secret required")
-			fmt.Println("\n💡 Set the secret:")
-			fmt.Println("   export CLOUDCTL_SECRET=\"your-32-char-encryption-key\"")
-			// Suggest keychain setup if on MacOS? Maybe separate init command or handled in login
+			fmt.Fprintln(os.Stderr, "❌ Encryption secret required")
 			return
 		}
 
 		if refreshAll {
 			refreshAllSessions(secret)
-		} else if refreshProfile != "" {
-			refreshSingleSession(refreshProfile, secret)
-		} else {
+			return
+		}
+
+		profile := refreshProfile
+		if profile == "" && len(args) > 0 {
+			profile = args[0]
+		}
+
+		if profile == "" {
 			// Interactive Selection
-			profiles, err := internal.ListProfiles()
-			if err != nil || len(profiles) == 0 {
-				fmt.Println("📭 No stored profiles found.")
+			allSessions, err := internal.ListAllSessions(secret)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "❌ Failed to list sessions: %v\n", err)
 				return
 			}
-			sort.Strings(profiles)
 
-			selected, err := ui.SelectProfile("Select Profile to Refresh", profiles)
+			if len(allSessions) == 0 {
+				fmt.Fprintln(os.Stderr, "📭 No sessions found.")
+				return
+			}
+
+			var options []string
+			for _, s := range allSessions {
+				status := "Expired"
+				if time.Now().Before(s.Expiration) {
+					status = "Active"
+				}
+				displayName := fmt.Sprintf("%-15s [%s]", s.Profile, status)
+				options = append(options, displayName)
+			}
+			sort.Strings(options)
+
+			selected, err := ui.SelectProfile("Select Session to Refresh/Restore", options)
 			if err != nil {
 				return
 			}
-			refreshSingleSession(selected, secret)
+			fmt.Sscanf(selected, "%s", &profile)
 		}
+
+		smartRefresh(profile, secret, forceRefresh)
 	},
 }
 
-func refreshSingleSession(profile string, secret string) {
-	fmt.Printf("🔄 Refreshing session for profile '%s'...\n", profile)
-
-	// Load existing session
-	session, err := internal.LoadCredentials(profile, secret)
+func smartRefresh(profile string, secret string, force bool) {
+	s, err := internal.LoadCredentials(profile, secret)
 	if err != nil {
-		fmt.Printf("❌ Failed to load session: %v\n", err)
+		fmt.Fprintf(os.Stderr, "❌ Profile '%s' not found.\n", profile)
 		return
 	}
 
-	// Check if already expired
-	if time.Until(session.Expiration) <= 0 {
-		fmt.Printf("⚠️  Session expired. Please use 'cloudctl login' to create a new session.\n")
-		return
+	now := time.Now()
+	isExpired := s.Expiration.Before(now)
+
+	// 1. Try Silent Refresh if not expired and not forced
+	if !isExpired && !force && s.RoleArn != "MFA-Session" && s.SourceProfile != "" {
+		fmt.Printf("🔄 Attempting silent refresh for '%s'...\n", profile)
+		_, err := internal.PerformRefresh(s, secret, s.Region)
+		if err == nil {
+			fmt.Printf("✅ Session '%s' refreshed silently.\n", profile)
+			return
+		}
+		fmt.Printf("⚠️  Silent refresh failed: %v. Switching to interactive restore...\n", err)
 	}
 
-	// Check if source profile is available
-	if session.SourceProfile == "" {
-		fmt.Printf("⚠️  No source profile stored. Please re-login to enable refresh.\n")
-		return
+	// 2. Interactive Restore (Relogin)
+	fmt.Printf("🔄 Restoring session '%s'...\n", s.Profile)
+	fmt.Printf("   Source: %s\n", s.SourceProfile)
+	if s.RoleArn != "MFA-Session" {
+		fmt.Printf("   Role:   %s\n", s.RoleArn)
 	}
+	fmt.Printf("   Region: %s\n", s.Region)
 
-	// Skip MFA sessions (they can't be refreshed by assuming a role)
-	if session.RoleArn == "MFA-Session" {
-		fmt.Printf("⚠️  MFA sessions cannot be refreshed. Please run mfa-login again.\n")
-		return
-	}
-
-	// Use source profile credentials to assume role again
 	ctx := context.TODO()
 	var cfg aws.Config
 
-	// Check if source profile is a cloudctl session
-	sourceSession, sourceErr := internal.LoadCredentials(session.SourceProfile, secret)
+	// Load Source Config
+	sourceSession, sourceErr := internal.LoadCredentials(s.SourceProfile, secret)
 	if sourceErr == nil {
-		// Source is a cloudctl session, use its credentials
 		cfg, err = config.LoadDefaultConfig(ctx,
-			config.WithRegion(region),
+			config.WithRegion(s.Region),
 			config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(
 				sourceSession.AccessKey,
 				sourceSession.SecretKey,
 				sourceSession.SessionToken,
 			)),
 		)
-		if err != nil {
-			fmt.Printf("❌ Failed to configure AWS SDK with session credentials: %v\n", err)
-			return
-		}
 	} else {
-		// Source is an AWS CLI profile
 		cfg, err = config.LoadDefaultConfig(ctx,
-			config.WithRegion(region),
-			config.WithSharedConfigProfile(session.SourceProfile),
+			config.WithRegion(s.Region),
+			config.WithSharedConfigProfile(s.SourceProfile),
 		)
-		if err != nil {
-			fmt.Printf("❌ Failed to load source profile '%s': %v\n", session.SourceProfile, err)
-			return
-		}
 	}
-
-	// Assume role again
-	stsClient := sts.NewFromConfig(cfg)
-	sessionName := profile // Use profile name as session name
-	duration := int32(3600)
-
-	res, err := ui.Spin(fmt.Sprintf("Refreshing session %s...", profile), func() (any, error) {
-		return stsClient.AssumeRole(ctx, &sts.AssumeRoleInput{
-			RoleArn:         &session.RoleArn,
-			RoleSessionName: &sessionName,
-			DurationSeconds: &duration,
-		})
-	})
 
 	if err != nil {
-		fmt.Printf("❌ Failed to refresh session: %v\n", err)
+		fmt.Fprintf(os.Stderr, "❌ Failed to load source config: %v\n", err)
 		return
 	}
 
-	roleResult, ok := res.(*sts.AssumeRoleOutput)
-	if !ok || roleResult == nil {
-		fmt.Println("❌ Internal error: invalid response from AssumeRole")
+	stsClient := sts.NewFromConfig(cfg)
+	var newSession *internal.AWSSession
+
+	if s.RoleArn == "MFA-Session" {
+		// MFA Session Flow
+		tokenCode := readMFACode()
+		if tokenCode == "" {
+			return
+		}
+
+		res, err := ui.Spin("Verifying MFA Token...", func() (any, error) {
+			return stsClient.GetSessionToken(ctx, &sts.GetSessionTokenInput{
+				DurationSeconds: &s.Duration,
+				SerialNumber:    &s.MfaArn,
+				TokenCode:       &tokenCode,
+			})
+		})
+
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "❌ MFA login failed: %v\n", err)
+			return
+		}
+
+		result := res.(*sts.GetSessionTokenOutput)
+		newSession = &internal.AWSSession{
+			Profile:       s.Profile,
+			AccessKey:     *result.Credentials.AccessKeyId,
+			SecretKey:     *result.Credentials.SecretAccessKey,
+			SessionToken:  *result.Credentials.SessionToken,
+			Expiration:    *result.Credentials.Expiration,
+			RoleArn:       "MFA-Session",
+			SourceProfile: s.SourceProfile,
+			Region:        s.Region,
+			MfaArn:        s.MfaArn,
+			Duration:      s.Duration,
+		}
+	} else {
+		// Role Assumption Flow
+		input := &sts.AssumeRoleInput{
+			RoleArn:         &s.RoleArn,
+			RoleSessionName: &s.Profile,
+			DurationSeconds: &s.Duration,
+		}
+
+		if s.MfaArn != "" {
+			tokenCode := readMFACode()
+			if tokenCode == "" {
+				return
+			}
+			input.SerialNumber = &s.MfaArn
+			input.TokenCode = &tokenCode
+		}
+
+		res, err := ui.Spin("Assuming role...", func() (any, error) {
+			return stsClient.AssumeRole(ctx, input)
+		})
+
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "❌ Failed to assume role: %v\n", err)
+			return
+		}
+
+		result := res.(*sts.AssumeRoleOutput)
+		newSession = &internal.AWSSession{
+			Profile:       s.Profile,
+			AccessKey:     *result.Credentials.AccessKeyId,
+			SecretKey:     *result.Credentials.SecretAccessKey,
+			SessionToken:  *result.Credentials.SessionToken,
+			Expiration:    *result.Credentials.Expiration,
+			RoleArn:       s.RoleArn,
+			SourceProfile: s.SourceProfile,
+			Region:        s.Region,
+			MfaArn:        s.MfaArn,
+			Duration:      s.Duration,
+		}
+	}
+
+	if err := internal.SaveCredentials(s.Profile, newSession, secret); err != nil {
+		fmt.Fprintf(os.Stderr, "❌ Failed to save refreshed session: %v\n", err)
 		return
 	}
 
-	// Update session with new credentials
-	expiration := *roleResult.Credentials.Expiration
-	newSession := &internal.AWSSession{
-		Profile:       profile,
-		AccessKey:     *roleResult.Credentials.AccessKeyId,
-		SecretKey:     *roleResult.Credentials.SecretAccessKey,
-		SessionToken:  *roleResult.Credentials.SessionToken,
-		Expiration:    expiration,
-		RoleArn:       session.RoleArn,
-		SourceProfile: session.SourceProfile,
-	}
-
-	// Save refreshed session
-	if err := internal.SaveCredentials(profile, newSession, secret); err != nil {
-		fmt.Printf("❌ Failed to save refreshed session: %v\n", err)
-		return
-	}
-
-	remaining := time.Until(expiration).Round(time.Minute)
-	fmt.Printf("✅ Session refreshed successfully\n")
-	fmt.Printf("   Profile: %s\n", profile)
-	fmt.Printf("   Role: %s\n", session.RoleArn)
-	fmt.Printf("   Expires: %s (%v remaining)\n", expiration.Local().Format("2006-01-02 15:04:05"), remaining)
+	fmt.Printf("\n✅ Session '%s' refreshed/restored successfully!\n", s.Profile)
+	fmt.Printf("   Expires: %s\n", newSession.Expiration.Local().Format("2006-01-02 15:04:05"))
 }
 
 func refreshAllSessions(secret string) {
-	fmt.Println("🔄 Refreshing all active sessions...")
+	fmt.Println("🔄 Smart refreshing all active sessions...")
 
 	sessions, err := internal.ListAllSessions(secret)
 	if err != nil {
@@ -181,111 +236,33 @@ func refreshAllSessions(secret string) {
 		return
 	}
 
-	now := time.Now()
 	refreshed := 0
 	skipped := 0
 	failed := 0
 
 	for _, s := range sessions {
-		remaining := s.Expiration.Sub(now)
-
-		// Skip expired sessions
-		if remaining <= 0 {
-			fmt.Printf("⏭️  Skipping '%s' (expired)\n", s.Profile)
+		// For 'all', we only do silent refresh for Active sessions.
+		// We don't want to prompt MFA 20 times for expired ones in a loop.
+		if time.Now().After(s.Expiration) {
+			fmt.Printf("⏭️  Skipping '%s' (expired, use manual refresh to restore)\n", s.Profile)
 			skipped++
 			continue
 		}
 
-		// Skip if no source profile
-		if s.SourceProfile == "" {
-			fmt.Printf("⏭️  Skipping '%s' (no source profile stored)\n", s.Profile)
+		if s.RoleArn == "MFA-Session" || s.SourceProfile == "" {
+			fmt.Printf("⏭️  Skipping '%s' (manual interaction required)\n", s.Profile)
 			skipped++
 			continue
 		}
 
-		// Skip MFA sessions
-		if s.RoleArn == "MFA-Session" {
-			fmt.Printf("⏭️  Skipping '%s' (MFA session, use mfa-login to renew)\n", s.Profile)
-			skipped++
-			continue
-		}
-
-		ctx := context.TODO()
-		var cfg aws.Config
-		var err error
-
-		// Check if source profile is a cloudctl session
-		sourceSession, sourceErr := internal.LoadCredentials(s.SourceProfile, secret)
-		if sourceErr == nil {
-			// Source is a cloudctl session, use its credentials
-			cfg, err = config.LoadDefaultConfig(ctx,
-				config.WithRegion(region),
-				config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(
-					sourceSession.AccessKey,
-					sourceSession.SecretKey,
-					sourceSession.SessionToken,
-				)),
-			)
-			if err != nil {
-				fmt.Printf("❌ Failed to configure AWS SDK with session credentials: %v\n", err)
-				failed++
-				continue
-			}
-		} else {
-			// Source is an AWS CLI profile
-			cfg, err = config.LoadDefaultConfig(ctx,
-				config.WithRegion(region),
-				config.WithSharedConfigProfile(s.SourceProfile))
-			if err != nil {
-				fmt.Printf("❌ Failed to load source profile '%s': %v\n", s.SourceProfile, err)
-				failed++
-				continue
-			}
-		}
-
-		stsClient := sts.NewFromConfig(cfg)
-		sessionName := s.Profile // Use profile name as session name
-		duration := int32(3600)
-
-		res, err := ui.Spin(fmt.Sprintf("Refreshing %s...", s.Profile), func() (any, error) {
-			return stsClient.AssumeRole(ctx, &sts.AssumeRoleInput{
-				RoleArn:         &s.RoleArn,
-				RoleSessionName: &sessionName,
-				DurationSeconds: &duration,
-			})
-		})
-
+		_, err := internal.PerformRefresh(s, secret, s.Region)
 		if err != nil {
-			fmt.Printf("❌ Failed to refresh: %v\n", err)
+			fmt.Printf("❌ Failed to refresh '%s': %v\n", s.Profile, err)
 			failed++
 			continue
 		}
 
-		roleResult, ok := res.(*sts.AssumeRoleOutput)
-		if !ok || roleResult == nil {
-			fmt.Println("❌ Internal error: invalid response from AssumeRole")
-			failed++
-			continue
-		}
-
-		expiration := *roleResult.Credentials.Expiration
-		newSession := &internal.AWSSession{
-			Profile:       s.Profile,
-			AccessKey:     *roleResult.Credentials.AccessKeyId,
-			SecretKey:     *roleResult.Credentials.SecretAccessKey,
-			SessionToken:  *roleResult.Credentials.SessionToken,
-			Expiration:    expiration,
-			RoleArn:       s.RoleArn,
-			SourceProfile: s.SourceProfile,
-		}
-
-		if err := internal.SaveCredentials(s.Profile, newSession, secret); err != nil {
-			fmt.Printf("❌ Failed to save: %v\n", err)
-			failed++
-			continue
-		}
-
-		fmt.Printf("✅ Refreshed successfully (expires: %s)\n", expiration.Local().Format("2006-01-02 15:04:05"))
+		fmt.Printf("✅ Refreshed '%s' silently.\n", s.Profile)
 		refreshed++
 	}
 
@@ -293,8 +270,9 @@ func refreshAllSessions(secret string) {
 }
 
 func init() {
-	refreshCmd.Flags().StringVar(&refreshSecret, "secret", os.Getenv("CLOUDCTL_SECRET"), "Secret key for decryption (or set CLOUDCTL_SECRET env var)")
-	refreshCmd.Flags().BoolVar(&refreshAll, "all", false, "Refresh all active sessions")
+	refreshCmd.Flags().StringVar(&refreshSecret, "secret", os.Getenv("CLOUDCTL_SECRET"), "Secret key for decryption")
+	refreshCmd.Flags().BoolVar(&refreshAll, "all", false, "Refresh all active sessions silently")
 	refreshCmd.Flags().StringVar(&refreshProfile, "profile", "", "Profile to refresh")
+	refreshCmd.Flags().BoolVarP(&forceRefresh, "force", "f", false, "Force interactive re-login even if session is active")
 	rootCmd.AddCommand(refreshCmd)
 }

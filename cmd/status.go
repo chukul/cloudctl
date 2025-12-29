@@ -118,6 +118,18 @@ var statusCmd = &cobra.Command{
 		printSessionGroup(displays, statusActive, "Active Sessions")
 		printSessionGroup(displays, statusExpiring, "Expiring Soon")
 		printSessionGroup(displays, statusExpired, "Expired Sessions")
+
+		// Add tip for expired sessions
+		hasExpired := false
+		for _, d := range displays {
+			if d.status == statusExpired {
+				hasExpired = true
+				break
+			}
+		}
+		if hasExpired {
+			fmt.Printf("\n%s💡 Tip:%s Use %scloudctl refresh [profile]%s to quickly restore expired sessions.\n", colorCyan, colorReset, colorBold, colorReset)
+		}
 	},
 }
 
@@ -134,7 +146,7 @@ func printSessionGroup(displays []sessionDisplay, status sessionStatus, title st
 	}
 
 	fmt.Printf("\n%s%s%s\n", colorBold, title, colorReset)
-	fmt.Println(strings.Repeat("─", 120))
+	fmt.Println(strings.Repeat("─", 100))
 
 	for _, d := range filtered {
 		s := d.session

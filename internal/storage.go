@@ -47,6 +47,18 @@ func SaveCredentials(profile string, creds *AWSSession, key string) error {
 	if err != nil {
 		return fmt.Errorf("failed to encrypt SourceProfile: %w", err)
 	}
+	regEnc, err := Encrypt([]byte(creds.Region), []byte(key))
+	if err != nil {
+		return fmt.Errorf("failed to encrypt Region: %w", err)
+	}
+	mfaEnc, err := Encrypt([]byte(creds.MfaArn), []byte(key))
+	if err != nil {
+		return fmt.Errorf("failed to encrypt MfaArn: %w", err)
+	}
+	durEnc, err := Encrypt([]byte(fmt.Sprintf("%d", creds.Duration)), []byte(key))
+	if err != nil {
+		return fmt.Errorf("failed to encrypt Duration: %w", err)
+	}
 
 	// convert encrypted bytes to base64 strings for JSON
 	encrypted := map[string]string{
@@ -57,6 +69,9 @@ func SaveCredentials(profile string, creds *AWSSession, key string) error {
 		"RoleArn":       base64.StdEncoding.EncodeToString(rnEnc),
 		"SessionName":   base64.StdEncoding.EncodeToString(snEnc),
 		"SourceProfile": base64.StdEncoding.EncodeToString(spEnc),
+		"Region":        base64.StdEncoding.EncodeToString(regEnc),
+		"MfaArn":        base64.StdEncoding.EncodeToString(mfaEnc),
+		"Duration":      base64.StdEncoding.EncodeToString(durEnc),
 	}
 
 	// load existing data
@@ -89,8 +104,14 @@ func LoadCredentials(profile, key string) (*AWSSession, error) {
 	}
 
 	var data map[string]map[string]string
-	json.Unmarshal(b, &data)
-	enc := data[profile]
+	if err := json.Unmarshal(b, &data); err != nil {
+		return nil, err
+	}
+
+	enc, ok := data[profile]
+	if !ok {
+		return nil, fmt.Errorf("profile '%s' not found in store", profile)
+	}
 
 	decryptField := func(field string) string {
 		bytes, _ := base64.StdEncoding.DecodeString(enc[field])
@@ -101,6 +122,10 @@ func LoadCredentials(profile, key string) (*AWSSession, error) {
 	expStr := decryptField("Expiration")
 	exp, _ := time.Parse(time.RFC3339, expStr)
 
+	durStr := decryptField("Duration")
+	var duration int32
+	fmt.Sscanf(durStr, "%d", &duration)
+
 	return &AWSSession{
 		Profile:       profile,
 		AccessKey:     decryptField("AccessKey"),
@@ -110,6 +135,9 @@ func LoadCredentials(profile, key string) (*AWSSession, error) {
 		RoleArn:       decryptField("RoleArn"),
 		SessionName:   decryptField("SessionName"),
 		SourceProfile: decryptField("SourceProfile"),
+		Region:        decryptField("Region"),
+		MfaArn:        decryptField("MfaArn"),
+		Duration:      duration,
 	}, nil
 }
 
@@ -172,6 +200,10 @@ func ListAllSessions(secret string) ([]*AWSSession, error) {
 			revoked = true
 		}
 
+		durStr := decryptField("Duration")
+		var duration int32
+		fmt.Sscanf(durStr, "%d", &duration)
+
 		sessions = append(sessions, &AWSSession{
 			Profile:       profile,
 			AccessKey:     decryptField("AccessKey"),
@@ -181,6 +213,9 @@ func ListAllSessions(secret string) ([]*AWSSession, error) {
 			RoleArn:       decryptField("RoleArn"),
 			SessionName:   decryptField("SessionName"),
 			SourceProfile: decryptField("SourceProfile"),
+			Region:        decryptField("Region"),
+			MfaArn:        decryptField("MfaArn"),
+			Duration:      duration,
 			Revoked:       revoked,
 		})
 	}

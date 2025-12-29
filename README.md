@@ -199,6 +199,24 @@ unset AWS_PROFILE
 eval $(cloudctl switch prod-admin)
 ```
 
+### 5. Smart Refresh & Restore
+
+Keep your sessions alive or restore expired ones using stored metadata. `cloudctl` will automatically decide between a silent refresh or an interactive MFA-based restore.
+
+```bash
+# Smart refresh interactively (Sorted A-Z)
+cloudctl refresh
+
+# Refresh specific profile
+cloudctl refresh prod-admin
+
+# Force interactive re-login even if still active
+cloudctl refresh prod-admin --force
+
+# Silent refresh for all active sessions (Used by Daemon)
+cloudctl refresh --all
+```
+
 ### 6. Auto-Refresh Daemon (macOS Plugin)
 
 Keep your sessions alive automatically. The daemon tracks the Region of each session to perform silent refreshes.
@@ -224,19 +242,7 @@ cloudctl daemon start --foreground
 
 ### 7. Refresh Sessions
 
-Refresh sessions manually before they expire:
-
-```bash
-# Refresh single profile
-cloudctl refresh --profile prod-admin --secret "your-secret"
-
-# Refresh all active sessions
-cloudctl refresh --all --secret "your-secret"
-```
-
-**Note:** 
-- MFA sessions cannot be refreshed. Use `mfa-login` to create a new one.
-- Only sessions with source profile information can be refreshed.
+See **[Smart Refresh & Restore](#5-smart-refresh--restore)** for detailed usage.
 
 ### 7. Logout
 
@@ -444,37 +450,30 @@ cloudctl console --profile prod-admin --open
 
 ### `refresh`
 
-Refresh AWS session credentials before expiration.
+Smart refresh or restore AWS sessions. It re-uses stored metadata (Source, Role, MFA, Region) to renew credentials.
+
+**Logic:**
+- **Active Session**: Attempts silent refresh without prompt.
+- **Expired/MFA Session**: Prompts for MFA token and performs a full re-login.
 
 **Flags:**
-- `--profile` - Profile to refresh (required unless using --all)
-- `--all` - Refresh all active sessions
-- `--secret` - Encryption key to decrypt credentials (or set CLOUDCTL_SECRET env var)
+- `--all` - Refresh all active sessions silently (skips expired/interactive ones).
+- `--profile` - Specific profile to refresh.
+- `--force` (`-f`) - Force interactive re-login even if session is still active.
+- `--secret` - Encryption key for decryption.
 
 **Usage:**
 ```bash
-# Refresh single profile
-cloudctl refresh --profile prod-admin
+# Interactive smart selection
+cloudctl refresh
 
-# Refresh all active sessions
+# Specific profile
+cloudctl refresh prod-admin
+
+# Silent refresh all (best for automation)
 cloudctl refresh --all
-
-# Or use the alias
-ccr --all
 ```
 
-**Note:** 
-- MFA sessions cannot be refreshed. Use `mfa-login` to create a new one.
-- Only sessions with source profile information can be refreshed.
-
-### `list`
-
-List all stored profile names.
-
-**Usage:**
-```bash
-cloudctl list
-```
 
 ### `init`
 
