@@ -81,6 +81,7 @@ After setup, you get:
 - `ccst` - Alias for cloudctl status
 - `ccr` - Alias for cloudctl refresh
 - `ccc` - Alias for cloudctl console
+- `ccm` - Alias for cloudctl mfa-login
 - Shell prompt showing current session and remaining time
 
 ## Quick Start
@@ -494,6 +495,7 @@ cloudctl init
 - `ccst` - Alias for cloudctl status
 - `ccr` - Alias for cloudctl refresh
 - `ccc` - Alias for cloudctl console
+- `ccm` - Alias for cloudctl mfa-login
 - Shell prompt integration showing current session
 - CLOUDCTL_SECRET environment variable setup
 
@@ -656,16 +658,19 @@ When running `cloudctl status` with no sessions, you'll see:
 cloudctl/
 ├── cmd/              # Command implementations
 │   ├── console.go    # Console sign-in command
+│   ├── daemon.go     # Auto-refresh daemon
 │   ├── init.go       # Shell integration command
-│   ├── list.go       # List profiles command
 │   ├── login.go      # Login/assume role command
 │   ├── logout.go     # Logout command
+│   ├── mfa.go        # MFA device alias management
 │   ├── mfa-login.go  # MFA session command
 │   ├── prompt.go     # Shell prompt command
-│   ├── refresh.go    # Refresh session command
+│   ├── refresh.go    # Smart refresh/restore command
+│   ├── role.go       # Role alias management
 │   ├── root.go       # Root command and CLI setup
 │   ├── status.go     # Status command
 │   ├── switch.go     # Quick switch command
+│   ├── sync.go       # Credentials file sync
 │   └── utils.go      # Shared utilities (MFA input)
 ├── internal/         # Internal packages
 │   ├── aws.go        # AWS SDK helpers
