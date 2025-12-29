@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"time"
 
 	"github.com/chukul/cloudctl/internal"
 	"github.com/chukul/cloudctl/internal/ui"
@@ -29,38 +30,53 @@ var switchCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		var profile string
 
-		if len(args) == 0 {
-			// Interactive mode
-			profiles, err := internal.ListProfiles()
-			if err != nil || len(profiles) == 0 {
-				fmt.Fprintln(os.Stderr, "❌ No profiles found. Create one first.")
-				return
-			}
-			sort.Strings(profiles)
-
-			selected, err := ui.SelectProfile("Select Profile", profiles)
-			if err != nil {
-				// User cancelled or error
-				return
-			}
-			profile = selected
-		} else {
-			profile = args[0]
-		}
-
+		// Get secret first to enable interactive listing with full details
 		secret, err := internal.GetSecret(switchSecret)
 		if err != nil {
-			// Ask if user wants to setup keychain if on macOS
-			if internal.IsMacOS() {
-				// TODO: We could add an interactive prompt here to setup keychain
-				// For now, just show the standard error
+			fmt.Fprintf(os.Stderr, "❌ Encryption secret required\n")
+			fmt.Fprintf(os.Stderr, "\n💡 Set the secret or use macOS Keychain:\n")
+			fmt.Fprintf(os.Stderr, "   export CLOUDCTL_SECRET=\"your-32-char-encryption-key\"\n")
+			return
+		}
+
+		if len(args) == 0 {
+			// Interactive mode
+			allSessions, err := internal.ListAllSessions(secret)
+			if err != nil {
+				fmt.Fprintln(os.Stderr, "❌ Failed to load sessions.")
+				return
 			}
 
-			fmt.Fprintf(os.Stderr, "❌ Encryption secret required\n")
-			fmt.Fprintf(os.Stderr, "\n💡 Set the secret:\n")
-			fmt.Fprintf(os.Stderr, "   export CLOUDCTL_SECRET=\"your-32-char-encryption-key\"\n")
-			fmt.Fprintf(os.Stderr, "   eval $(cloudctl switch %s)\n", profile)
-			return
+			now := time.Now()
+			var options []string
+			optionToProfile := make(map[string]string)
+
+			for _, s := range allSessions {
+				// Only show active sessions
+				if s.Expiration.After(now) {
+					sessionType := "Role"
+					if s.RoleArn == "MFA-Session" {
+						sessionType = "MFA"
+					}
+					displayName := fmt.Sprintf("%-15s (%s)", s.Profile, sessionType)
+					options = append(options, displayName)
+					optionToProfile[displayName] = s.Profile
+				}
+			}
+
+			if len(options) == 0 {
+				fmt.Fprintln(os.Stderr, "📭 No active sessions found. Create one first.")
+				return
+			}
+			sort.Strings(options)
+
+			selected, err := ui.SelectProfile("Select Active Profile to Switch", options)
+			if err != nil {
+				return
+			}
+			profile = optionToProfile[selected]
+		} else {
+			profile = args[0]
 		}
 
 		s, err := internal.LoadCredentials(profile, secret)

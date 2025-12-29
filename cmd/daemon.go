@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"time"
@@ -11,7 +12,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var daemonInterval int
+var (
+	daemonInterval   int
+	daemonForeground bool
+)
 
 const (
 	daemonPIDFile = ".cloudctl/daemon.pid"
@@ -35,19 +39,38 @@ var daemonStartCmd = &cobra.Command{
 		// Check if already running
 		if _, err := os.Stat(pidPath); err == nil {
 			fmt.Println("❌ Daemon is already running (or pid file exists).")
-			fmt.Println("� Use 'cloudctl daemon stop' first if you want to restart.")
+			fmt.Println("💡 Use 'cloudctl daemon stop' first if you want to restart.")
 			return
 		}
 
-		fmt.Printf("�🚀 Starting CloudCtl daemon (Interval: %d minutes)...\n", daemonInterval)
+		if daemonForeground {
+			fmt.Printf("🚀 Starting CloudCtl daemon in foreground (Interval: %d minutes)...\n", daemonInterval)
+			startDaemonLoop(daemonInterval)
+			return
+		}
+
+		// Self-forking logic
+		execPath, _ := os.Executable()
+		bgCmd := exec.Command(execPath, "daemon", "start", "--foreground", "--interval", fmt.Sprintf("%d", daemonInterval))
+
+		// Redirect output to log files for the background process
+		logDir := filepath.Join(home, ".cloudctl")
+		os.MkdirAll(logDir, 0700)
+
+		stdoutFile, _ := os.OpenFile(filepath.Join(logDir, "daemon.stdout.log"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
+		stderrFile, _ := os.OpenFile(filepath.Join(logDir, "daemon.stderr.log"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
+
+		bgCmd.Stdout = stdoutFile
+		bgCmd.Stderr = stderrFile
+
+		err := bgCmd.Start()
+		if err != nil {
+			fmt.Printf("❌ Failed to start daemon in background: %v\n", err)
+			return
+		}
+
+		fmt.Printf("🚀 CloudCtl daemon started in background (PID: %d)\n", bgCmd.Process.Pid)
 		fmt.Printf("📝 Logs: ~/%s\n", daemonLogFile)
-
-		// In a real production app, we'd use a package like 'sevlyar/go-daemon'
-		// but for now, we'll implement a clean loop.
-		// If user wants it in background, they can use 'cloudctl daemon start &'
-		// or we can implement a self-forking logic later.
-
-		startDaemonLoop(daemonInterval)
 	},
 }
 
@@ -105,8 +128,13 @@ func runRefreshCheck(logWriter *os.File) {
 			fmt.Fprintf(logWriter, "[%s] Refreshing profile '%s' (expires in %v)...\n",
 				time.Now().Format(time.RFC3339), s.Profile, time.Until(s.Expiration).Round(time.Second))
 
-			// Use ap-southeast-1 as default if none specified (or improve this later)
-			_, err := internal.PerformRefresh(s, secret, "ap-southeast-1")
+			// Use stored region if available, fallback to ap-southeast-1
+			refreshRegion := s.Region
+			if refreshRegion == "" {
+				refreshRegion = "ap-southeast-1"
+			}
+
+			_, err := internal.PerformRefresh(s, secret, refreshRegion)
 			if err != nil {
 				fmt.Fprintf(logWriter, "[%s] Failed to refresh '%s': %v\n", time.Now().Format(time.RFC3339), s.Profile, err)
 			} else {
@@ -204,6 +232,7 @@ var daemonSetupCmd = &cobra.Command{
         <string>%s</string>
         <string>daemon</string>
         <string>start</string>
+        <string>--foreground</string>
     </array>
     <key>RunAtLoad</key>
     <true/>
@@ -231,6 +260,7 @@ var daemonSetupCmd = &cobra.Command{
 
 func init() {
 	daemonStartCmd.Flags().IntVarP(&daemonInterval, "interval", "i", 5, "Check interval in minutes")
+	daemonStartCmd.Flags().BoolVarP(&daemonForeground, "foreground", "f", false, "Run in foreground")
 
 	daemonCmd.AddCommand(daemonStartCmd)
 	daemonCmd.AddCommand(daemonStopCmd)

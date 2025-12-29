@@ -13,5 +13,6 @@ type AWSSession struct {
 	RoleArn       string
 	SessionName   string
 	SourceProfile string // Source profile used for assuming the role
+	Region        string // AWS Region for this session
 	Revoked       bool   // optional flag
 }

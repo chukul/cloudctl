@@ -45,31 +45,47 @@ var loginCmd = &cobra.Command{
 		// Interactive prompts for missing parameters
 		if sourceProfile == "" {
 			awsProfiles := listAWSProfiles()
-			ctlProfiles, _ := internal.ListProfiles()
 
-			// Merge and deduplicate
+			// Get secret to list full session info for filtering/labeling
+			secret, _ := internal.GetSecret("")
+			allSessions, _ := internal.ListAllSessions(secret)
+
+			var options []string
+			optionToProfile := make(map[string]string)
 			seen := make(map[string]bool)
-			var allProfiles []string
-			for _, p := range awsProfiles {
-				if !seen[p] {
-					allProfiles = append(allProfiles, p)
-					seen[p] = true
-				}
-			}
-			for _, p := range ctlProfiles {
-				if !seen[p] {
-					allProfiles = append(allProfiles, p)
-					seen[p] = true
-				}
-			}
-			sort.Strings(allProfiles)
 
-			if len(allProfiles) > 0 {
-				selected, err := ui.SelectProfile("Select Source Profile", allProfiles)
+			// 1. Add AWS Profiles
+			for _, p := range awsProfiles {
+				displayName := fmt.Sprintf("%-15s (AWS Profile)", p)
+				options = append(options, displayName)
+				optionToProfile[displayName] = p
+				seen[p] = true
+			}
+
+			// 2. Add CloudCtl Sessions (only active ones)
+			now := time.Now()
+			for _, s := range allSessions {
+				if s.Expiration.After(now) {
+					label := "CloudCtl Session"
+					if s.RoleArn == "MFA-Session" {
+						label = "MFA Session"
+					}
+
+					displayName := fmt.Sprintf("%-15s (%s)", s.Profile, label)
+					// If a profile name exists in both AWS and CloudCtl, show both with different labels
+					options = append(options, displayName)
+					optionToProfile[displayName] = s.Profile
+				}
+			}
+
+			sort.Strings(options)
+
+			if len(options) > 0 {
+				selected, err := ui.SelectProfile("Select Source Profile", options)
 				if err != nil {
 					return
 				}
-				sourceProfile = selected
+				sourceProfile = optionToProfile[selected]
 			}
 		}
 
@@ -327,6 +343,7 @@ var loginCmd = &cobra.Command{
 			Expiration:    expiration,
 			RoleArn:       roleArn,
 			SourceProfile: sourceProfile,
+			Region:        region,
 		}
 
 		if useEncryption {

@@ -77,19 +77,28 @@ This allows external tools (Terraform, VS Code, etc.) to use your assumed roles 
 			}
 		} else {
 			// Interactive Selection
-			var profiles []string
+			var options []string
+			optionToProfile := make(map[string]string)
 			for _, s := range activeSessions {
-				profiles = append(profiles, s.Profile)
+				sessionType := "Role"
+				if s.RoleArn == "MFA-Session" {
+					sessionType = "MFA"
+				}
+				// Format: "profile (Type)"
+				displayName := fmt.Sprintf("%-15s (%s)", s.Profile, sessionType)
+				options = append(options, displayName)
+				optionToProfile[displayName] = s.Profile
 			}
-			sort.Strings(profiles)
+			sort.Strings(options)
 
-			selected, err := ui.SelectProfile("Select Active Profile to Sync to ~/.aws/credentials", profiles)
+			selected, err := ui.SelectProfile("Select Active Profile to Sync (MFA or Role)", options)
 			if err != nil {
 				return
 			}
 
+			selectedProfile := optionToProfile[selected]
 			for _, s := range activeSessions {
-				if s.Profile == selected {
+				if s.Profile == selectedProfile {
 					sessionsToSync = append(sessionsToSync, s)
 					break
 				}
@@ -173,8 +182,13 @@ This allows external tools (Terraform, VS Code, etc.) to use your assumed roles 
 
 		syncedCount := 0
 		for _, s := range sessionsToSync {
+			sessionType := "Role Session"
+			if s.RoleArn == "MFA-Session" {
+				sessionType = "MFA Session"
+			}
+
 			// Add comment identifying it as cloudctl managed
-			newLines = append(newLines, fmt.Sprintf("; Managed by cloudctl - Expires: %s", s.Expiration.Local().Format("2006-01-02 15:04:05")))
+			newLines = append(newLines, fmt.Sprintf("; Managed by cloudctl (%s) - Expires: %s", sessionType, s.Expiration.Local().Format("2006-01-02 15:04:05")))
 			newLines = append(newLines, fmt.Sprintf("[%s]", s.Profile))
 			newLines = append(newLines, fmt.Sprintf("aws_access_key_id = %s", s.AccessKey))
 			newLines = append(newLines, fmt.Sprintf("aws_secret_access_key = %s", s.SecretKey))

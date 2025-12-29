@@ -16,18 +16,17 @@ A lightweight CLI tool for securely managing AWS AssumeRole sessions with MFA su
 - 🔐 **Secure Credential Storage** - Encrypt AWS credentials with AES-256-GCM
 - 🎯 **AssumeRole Support** - Easily assume IAM roles with MFA
 - 🎨 **Enhanced Gradient CLI** - Beautiful 24-bit color gradient UI
-- 🤖 **Auto-Refresh Daemon** - Background service to keep sessions alive
+- 🤖 **Auto-Refresh Daemon** - Background service with self-forking & macOS LaunchAgent support
 - 📂 **Role Aliasing** - Bulk import/export IAM roles via JSON
 - 🌐 **Console Access** - Generate AWS console URLs instantly
-- **Interactive TUI**: Modern, interactive prompts for profile selection and login.
-- **MFA Device Management**: Save and alias your MFA devices (`cloudctl mfa`).
+- 🧩 **Hybrid Login** - Reuse existing sessions as source for role assumption
+- 🏗️ **Smart Sync** - Export sessions to `~/.aws/credentials` with session type tracking
+- **Interactive TUI**: Modern, interactive prompts sorted alphabetically (A-Z) for easy selection.
 - **Touch ID Support**: Securely store encryption keys in macOS Keychain for passwordless operation.
-- **Credential Sync**: Export assumed roles to `~/.aws/credentials` for compatibility with external tools (Terraform, VS Code, etc.).
-- **Session Management**: List, refresh, and switch between multiple active sessions.
-- 🔄 **MFA Session Caching** - Enter MFA once, assume unlimited roles for 12 hours
--  **Shell Integration** - Display current session in your shell prompt
--  **Local Timezone** - All timestamps display in your local timezone
-- 🔒 **Masked MFA Input** - Asterisk display (`******`) for MFA codes with backspace support
+- **MFA Session Caching**: Enter MFA once, assume unlimited roles for 12 hours.
+- 🐚 **Shell Integration** - Display current session and remaining time in your shell prompt.
+- 🔒 **Masked MFA Input** - Asterisk display (`******`) for MFA codes with backspace support.
+- 🛡️ **Session Persistence** - Automatically tracks AWS Region to ensure correct API calls during refresh.
 
 ## Installation
 
@@ -200,22 +199,27 @@ unset AWS_PROFILE
 eval $(cloudctl switch prod-admin)
 ```
 
-### 6. Auto-Refresh Daemon (macOS)
+### 6. Auto-Refresh Daemon (macOS Plugin)
 
-Keep your sessions alive automatically without manual intervention.
+Keep your sessions alive automatically. The daemon tracks the Region of each session to perform silent refreshes.
 
 ```bash
 # 1. Setup automatic startup (macOS only)
 cloudctl daemon setup
 launchctl load ~/Library/LaunchAgents/com.chukul.cloudctl.plist
 
-# 2. Start/Stop manually
+# 2. Start (Runs in background automatically via self-forking)
 cloudctl daemon start
-cloudctl daemon stop
 
-# 3. Check status and logs
+# 3. View status and logs
 cloudctl daemon status
 cloudctl daemon logs
+
+# 4. Stop
+cloudctl daemon stop
+
+# 5. Run in foreground (for debugging)
+cloudctl daemon start --foreground
 ```
 
 ### 7. Refresh Sessions
@@ -307,18 +311,22 @@ cloudctl mfa list
 cloudctl mfa-login --mfa iphone
 ```
 
-## 🔄 Credential Sync
+### 7. Credential Sync
 
-Export your active `cloudctl` sessions to the standard `~/.aws/credentials` file.
-This makes your assumed roles available to tools like **Terraform**, **VS Code Extensions**, and **TablePlus**.
+Export your active `cloudctl` sessions to `~/.aws/credentials`. The command identifies whether a session is a **Role** or **MFA** session in the comments.
 
 ```bash
-# Sync all active sessions
+# Interactive sync with session type labeling (MFA or Role)
+cloudctl sync
+
+# Sync all active sessions without prompt
 cloudctl sync --all
 
-# Sync a specific profile
+# Sync specific profile
 cloudctl sync --profile prod-admin
 ```
+
+**Note:** `cloudctl` automatically detects your secret from macOS Keychain or environment variables. No `--secret` flag needed if setup.
 
 ## Commands Reference
 
@@ -408,35 +416,28 @@ Expiring Soon
 
 ### `switch`
 
-Quick switch to a profile and export credentials in one command.
-
-**Flags:**
-- `<profile>` - Profile name to switch to (required)
-- `--secret` - Encryption key to decrypt credentials (or set CLOUDCTL_SECRET env var)
+Quick switch to a profile and export credentials. Only **active (non-expired)** sessions are shown in the interactive list.
 
 **Usage:**
 ```bash
-export CLOUDCTL_SECRET="your-secret"
-eval $(cloudctl switch prod-admin)
+# Interactive selection (Sorted A-Z, filtering out expired ones)
+eval $(cloudctl switch)
 
-# Or use the shell function
-ccs prod-admin
+# Specific profile
+eval $(cloudctl switch prod-admin)
 ```
 
 ### `console`
 
 Generate AWS Console sign-in URL from stored session.
-Generate a sign-in URL for the AWS Console.
 
+**Usage:**
 ```bash
-# Generate URL and print to stdout
-cloudctl console --profile <name>
-
-# Generate and automatically open in default browser
-cloudctl console --profile <name> --open
-
-# Interactive mode (select profile from list)
+# Interactive mode (select from active profiles)
 cloudctl console --open
+
+# Specific profile
+cloudctl console --profile prod-admin --open
 ```
 
 **Note:** MFA sessions cannot be used for console access. Use an assumed role profile instead.
@@ -669,10 +670,14 @@ cloudctl/
 │   └── utils.go      # Shared utilities (MFA input)
 ├── internal/         # Internal packages
 │   ├── aws.go        # AWS SDK helpers
-│   ├── crypto.go     # Encryption/decryption
-│   ├── session.go    # Session types
-│   ├── storage.go    # Credential storage
-│   └── types.go      # Type definitions
+│   ├── crypto.go     # Encryption/decryption logic
+│   ├── keychain_darwin.go # macOS Keychain integration
+│   ├── keychain_stub.go   # Stub for non-macOS platforms
+│   ├── os_utils.go   # OS-specific utilities
+│   ├── session.go    # Session types and handling
+│   ├── storage.go    # Credential storage logic
+│   ├── types.go      # Shared type definitions
+│   └── ui/           # Interactive UI components
 ├── go.mod
 ├── go.sum
 ├── main.go

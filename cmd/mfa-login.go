@@ -163,6 +163,7 @@ Use this session as source profile for subsequent role assumptions without re-en
 			Expiration:    expiration,
 			RoleArn:       "MFA-Session", // Special marker
 			SourceProfile: mfaSourceProfile,
+			Region:        region,
 		}
 
 		// Get secret from flag, env, or keychain
