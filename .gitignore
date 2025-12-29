@@ -29,5 +29,16 @@ Thumbs.db
 # Credentials and secrets
 .cloudctl/
 credentials.json
+my-roles.json
+*.json
+!go.mod
+!go.sum
+!package.json
+!package-lock.json
+
 *.pem
 *.key
+*.log
+*.stdout
+*.stderr
+daemon.pid
