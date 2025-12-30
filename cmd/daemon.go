@@ -118,28 +118,41 @@ func runRefreshCheck(logWriter *os.File) {
 
 	now := time.Now()
 	for _, s := range sessions {
-		// Refresh if expiring in less than 15 minutes
-		if time.Until(s.Expiration) < 15*time.Minute {
-			// Skip if already expired (better to relogin manually)
-			if now.After(s.Expiration) {
-				continue
-			}
+		// 1. Skip sessions that are not near expiration (> 15 mins)
+		if time.Until(s.Expiration) >= 15*time.Minute {
+			continue
+		}
 
-			fmt.Fprintf(logWriter, "[%s] Refreshing profile '%s' (expires in %v)...\n",
-				time.Now().Format(time.RFC3339), s.Profile, time.Until(s.Expiration).Round(time.Second))
+		// 2. Skip sessions that are already expired (the user must relogin manually)
+		if now.After(s.Expiration) {
+			continue
+		}
 
-			// Use stored region if available, fallback to ap-southeast-1
-			refreshRegion := s.Region
-			if refreshRegion == "" {
-				refreshRegion = "ap-southeast-1"
-			}
+		// 3. Skip sessions that cannot be silently refreshed (MFA sessions)
+		if s.RoleArn == "MFA-Session" {
+			// Silently skip MFA sessions to avoid log noise
+			continue
+		}
 
-			_, err := internal.PerformRefresh(s, secret, refreshRegion)
-			if err != nil {
-				fmt.Fprintf(logWriter, "[%s] Failed to refresh '%s': %v\n", time.Now().Format(time.RFC3339), s.Profile, err)
-			} else {
-				fmt.Fprintf(logWriter, "[%s] Successfully refreshed '%s'\n", time.Now().Format(time.RFC3339), s.Profile)
-			}
+		// 4. Skip sessions with no source
+		if s.SourceProfile == "" {
+			continue
+		}
+
+		// 5. Attempt Refresh
+		fmt.Fprintf(logWriter, "[%s] Refreshing profile '%s' (expires in %v)...\n",
+			now.Format(time.RFC3339), s.Profile, time.Until(s.Expiration).Round(time.Second))
+
+		refreshRegion := s.Region
+		if refreshRegion == "" {
+			refreshRegion = "ap-southeast-1"
+		}
+
+		_, err := internal.PerformRefresh(s, secret, refreshRegion)
+		if err != nil {
+			fmt.Fprintf(logWriter, "[%s] Failed to refresh '%s': %v\n", now.Format(time.RFC3339), s.Profile, err)
+		} else {
+			fmt.Fprintf(logWriter, "[%s] Successfully refreshed '%s'\n", now.Format(time.RFC3339), s.Profile)
 		}
 	}
 }

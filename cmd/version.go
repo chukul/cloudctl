@@ -12,7 +12,7 @@ var versionCmd = &cobra.Command{
 	Short: "Show version information",
 	Run: func(cmd *cobra.Command, args []string) {
 		fmt.Printf("cloudctl version %s\n", internal.CurrentVersion)
-		
+
 		// Force check for updates
 		latest, url, err := internal.FetchLatestVersion()
 		if err != nil {

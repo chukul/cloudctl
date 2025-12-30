@@ -3,6 +3,7 @@ package internal
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -10,6 +11,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 )
 
+// AssumeRole performs an AWS STS AssumeRole operation and returns a session.
 func AssumeRole(profile, roleArn, sessionName, region string) (*AWSSession, error) {
 	cfg, err := config.LoadDefaultConfig(context.TODO(),
 		config.WithRegion(region),
@@ -40,8 +42,11 @@ func AssumeRole(profile, roleArn, sessionName, region string) (*AWSSession, erro
 
 // PerformRefresh silenty refreshes a single session if possible
 func PerformRefresh(s *AWSSession, secret, region string) (*AWSSession, error) {
-	if s.SourceProfile == "" || s.RoleArn == "MFA-Session" {
-		return nil, fmt.Errorf("session cannot be refreshed (no source or MFA session)")
+	if s.RoleArn == "MFA-Session" {
+		return nil, fmt.Errorf("MFA sessions cannot be silently refreshed")
+	}
+	if s.SourceProfile == "" {
+		return nil, fmt.Errorf("no source profile stored for this session")
 	}
 
 	ctx := context.TODO()
@@ -51,7 +56,11 @@ func PerformRefresh(s *AWSSession, secret, region string) (*AWSSession, error) {
 	// Load source credentials
 	sourceSession, sourceErr := LoadCredentials(s.SourceProfile, secret)
 	if sourceErr == nil {
-		// Source is a cloudctl session
+		// Source is a cloudctl session - Check if it's still active
+		if time.Now().After(sourceSession.Expiration) {
+			return nil, fmt.Errorf("source session '%s' has expired", s.SourceProfile)
+		}
+
 		cfg, err = config.LoadDefaultConfig(ctx,
 			config.WithRegion(region),
 			config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(
@@ -93,6 +102,9 @@ func PerformRefresh(s *AWSSession, secret, region string) (*AWSSession, error) {
 		Expiration:    *res.Credentials.Expiration,
 		RoleArn:       s.RoleArn,
 		SourceProfile: s.SourceProfile,
+		Region:        s.Region,
+		MfaArn:        s.MfaArn,
+		Duration:      s.Duration,
 	}
 
 	if err := SaveCredentials(s.Profile, newSession, secret); err != nil {

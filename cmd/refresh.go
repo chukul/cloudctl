@@ -108,7 +108,17 @@ func smartRefresh(profile string, secret string, force bool) {
 	if s.RoleArn != "MFA-Session" {
 		fmt.Printf("   Role:   %s\n", s.RoleArn)
 	}
-	fmt.Printf("   Region: %s\n", s.Region)
+	region := s.Region
+	if region == "" {
+		region = "ap-southeast-1"
+	}
+
+	duration := s.Duration
+	if duration < 900 {
+		duration = 3600 // Default to 1 hour
+	}
+
+	fmt.Printf("   Region: %s\n", region)
 
 	ctx := context.TODO()
 	var cfg aws.Config
@@ -117,7 +127,7 @@ func smartRefresh(profile string, secret string, force bool) {
 	sourceSession, sourceErr := internal.LoadCredentials(s.SourceProfile, secret)
 	if sourceErr == nil {
 		cfg, err = config.LoadDefaultConfig(ctx,
-			config.WithRegion(s.Region),
+			config.WithRegion(region),
 			config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(
 				sourceSession.AccessKey,
 				sourceSession.SecretKey,
@@ -126,7 +136,7 @@ func smartRefresh(profile string, secret string, force bool) {
 		)
 	} else {
 		cfg, err = config.LoadDefaultConfig(ctx,
-			config.WithRegion(s.Region),
+			config.WithRegion(region),
 			config.WithSharedConfigProfile(s.SourceProfile),
 		)
 	}
@@ -148,7 +158,7 @@ func smartRefresh(profile string, secret string, force bool) {
 
 		res, err := ui.Spin("Verifying MFA Token...", func() (any, error) {
 			return stsClient.GetSessionToken(ctx, &sts.GetSessionTokenInput{
-				DurationSeconds: &s.Duration,
+				DurationSeconds: &duration,
 				SerialNumber:    &s.MfaArn,
 				TokenCode:       &tokenCode,
 			})
@@ -168,16 +178,16 @@ func smartRefresh(profile string, secret string, force bool) {
 			Expiration:    *result.Credentials.Expiration,
 			RoleArn:       "MFA-Session",
 			SourceProfile: s.SourceProfile,
-			Region:        s.Region,
+			Region:        region,
 			MfaArn:        s.MfaArn,
-			Duration:      s.Duration,
+			Duration:      duration,
 		}
 	} else {
 		// Role Assumption Flow
 		input := &sts.AssumeRoleInput{
 			RoleArn:         &s.RoleArn,
 			RoleSessionName: &s.Profile,
-			DurationSeconds: &s.Duration,
+			DurationSeconds: &duration,
 		}
 
 		if s.MfaArn != "" {
@@ -207,9 +217,9 @@ func smartRefresh(profile string, secret string, force bool) {
 			Expiration:    *result.Credentials.Expiration,
 			RoleArn:       s.RoleArn,
 			SourceProfile: s.SourceProfile,
-			Region:        s.Region,
+			Region:        region,
 			MfaArn:        s.MfaArn,
-			Duration:      s.Duration,
+			Duration:      duration,
 		}
 	}
 
