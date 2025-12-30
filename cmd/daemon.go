@@ -85,8 +85,12 @@ func startDaemonLoop(intervalMins int) {
 	defer os.Remove(pidPath)
 
 	// Setup logging
-	logFile, _ := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
-	defer logFile.Close()
+	currentDay := time.Now().YearDay()
+	logFile, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
+	if err != nil {
+		fmt.Printf("❌ Failed to open log file: %v\n", err)
+		return
+	}
 
 	fmt.Fprintf(logFile, "[%s] Daemon started\n", time.Now().Format(time.RFC3339))
 
@@ -94,6 +98,20 @@ func startDaemonLoop(intervalMins int) {
 	defer ticker.Stop()
 
 	for {
+		// Log Rotation: If day has changed, truncate the log file
+		now := time.Now()
+		if now.YearDay() != currentDay {
+			logFile.Close()
+			// Open with O_TRUNC to clear previous day logs
+			logFile, err = os.OpenFile(logPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0600)
+			if err != nil {
+				fmt.Printf("❌ Failed to rotate log file: %v\n", err)
+				return
+			}
+			currentDay = now.YearDay()
+			fmt.Fprintf(logFile, "[%s] Log rotated (new day started)\n", now.Format(time.RFC3339))
+		}
+
 		// Run refresh check
 		runRefreshCheck(logFile)
 
