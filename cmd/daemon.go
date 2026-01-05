@@ -92,7 +92,7 @@ func startDaemonLoop(intervalMins int) {
 		return
 	}
 
-	fmt.Fprintf(logFile, "[%s] Daemon started\n", time.Now().Format(time.RFC3339))
+	fmt.Fprintf(logFile, "[%s] 🚀 [Daemon] Started (Interval: %d mins)\n", time.Now().Format("15:04:05"), intervalMins)
 
 	ticker := time.NewTicker(time.Duration(intervalMins) * time.Minute)
 	defer ticker.Stop()
@@ -109,7 +109,7 @@ func startDaemonLoop(intervalMins int) {
 				return
 			}
 			currentDay = now.YearDay()
-			fmt.Fprintf(logFile, "[%s] Log rotated (new day started)\n", now.Format(time.RFC3339))
+			fmt.Fprintf(logFile, "[%s] 🔄 [Daemon] Log rotated (new day started)\n", now.Format("15:04:05"))
 		}
 
 		// Run refresh check
@@ -120,21 +120,22 @@ func startDaemonLoop(intervalMins int) {
 }
 
 func runRefreshCheck(logWriter *os.File) {
-	fmt.Fprintf(logWriter, "[%s] Checking sessions...\n", time.Now().Format(time.RFC3339))
-
 	secret, err := internal.GetSecret("")
 	if err != nil {
-		fmt.Fprintf(logWriter, "[%s] Error: encryption secret required\n", time.Now().Format(time.RFC3339))
+		fmt.Fprintf(logWriter, "[%s] ❌ [Daemon] Error: encryption secret required\n", time.Now().Format("15:04:05"))
 		return
 	}
 
 	sessions, err := internal.ListAllSessions(secret)
 	if err != nil {
-		fmt.Fprintf(logWriter, "[%s] Error: failed to list sessions: %v\n", time.Now().Format(time.RFC3339), err)
+		fmt.Fprintf(logWriter, "[%s] ❌ [Daemon] Error: failed to list sessions: %v\n", time.Now().Format("15:04:05"), err)
 		return
 	}
 
+	fmt.Fprintf(logWriter, "[%s] 🔍 [Daemon] Checking %d sessions...\n", time.Now().Format("15:04:05"), len(sessions))
+
 	now := time.Now()
+	actionTaken := false
 	for _, s := range sessions {
 		// 1. Skip sessions that are not near expiration (> 15 mins)
 		if time.Until(s.Expiration) >= 15*time.Minute {
@@ -158,20 +159,28 @@ func runRefreshCheck(logWriter *os.File) {
 		}
 
 		// 5. Attempt Refresh
-		fmt.Fprintf(logWriter, "[%s] Refreshing profile '%s' (expires in %v)...\n",
-			now.Format(time.RFC3339), s.Profile, time.Until(s.Expiration).Round(time.Second))
+		fmt.Fprintf(logWriter, "[%s] 🔄 [%s] Expiring in %v, starting silent refresh...\n",
+			now.Format("15:04:05"), s.Profile, time.Until(s.Expiration).Round(time.Second))
 
 		refreshRegion := s.Region
 		if refreshRegion == "" {
 			refreshRegion = "ap-southeast-1"
 		}
 
+		refreshStart := time.Now()
 		_, err := internal.PerformRefresh(s, secret, refreshRegion)
+		duration := time.Since(refreshStart).Round(10 * time.Millisecond)
+
 		if err != nil {
-			fmt.Fprintf(logWriter, "[%s] Failed to refresh '%s': %v\n", now.Format(time.RFC3339), s.Profile, err)
+			fmt.Fprintf(logWriter, "[%s] ❌ [%s] Refresh failed: %v\n", time.Now().Format("15:04:05"), s.Profile, err)
 		} else {
-			fmt.Fprintf(logWriter, "[%s] Successfully refreshed '%s'\n", now.Format(time.RFC3339), s.Profile)
+			fmt.Fprintf(logWriter, "[%s] ✅ [%s] Successfully refreshed (took %v)\n", time.Now().Format("15:04:05"), s.Profile, duration)
 		}
+		actionTaken = true
+	}
+
+	if !actionTaken {
+		fmt.Fprintf(logWriter, "[%s] 🟢 [Daemon] All sessions healthy. Next check in 5m.\n", time.Now().Format("15:04:05"))
 	}
 }
 
