@@ -368,7 +368,7 @@ var loginCmd = &cobra.Command{
 		fmt.Printf("   Role: %s\n", roleArn)
 		fmt.Printf("   Source: %s\n", sourceProfile)
 		fmt.Printf("   Expires: %s (%v remaining)\n",
-			expiration.Local().Format("2006-01-02 15:04:05"), remaining)
+			internal.FormatBKK(expiration), remaining)
 
 		// Open console if requested
 		if openConsole {

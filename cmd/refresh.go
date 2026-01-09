@@ -229,7 +229,7 @@ func smartRefresh(profile string, secret string, force bool) {
 	}
 
 	fmt.Printf("\n✅ Session '%s' refreshed/restored successfully!\n", s.Profile)
-	fmt.Printf("   Expires: %s\n", newSession.Expiration.Local().Format("2006-01-02 15:04:05"))
+	fmt.Printf("   Expires: %s\n", internal.FormatBKK(newSession.Expiration))
 }
 
 func refreshAllSessions(secret string) {

@@ -188,7 +188,7 @@ This allows external tools (Terraform, VS Code, etc.) to use your assumed roles 
 			}
 
 			// Add comment identifying it as cloudctl managed
-			newLines = append(newLines, fmt.Sprintf("; Managed by cloudctl (%s) - Expires: %s", sessionType, s.Expiration.Local().Format("2006-01-02 15:04:05")))
+			newLines = append(newLines, fmt.Sprintf("; Managed by cloudctl (%s) - Expires: %s", sessionType, internal.FormatBKK(s.Expiration)))
 			newLines = append(newLines, fmt.Sprintf("[%s]", s.Profile))
 			newLines = append(newLines, fmt.Sprintf("aws_access_key_id = %s", s.AccessKey))
 			newLines = append(newLines, fmt.Sprintf("aws_secret_access_key = %s", s.SecretKey))

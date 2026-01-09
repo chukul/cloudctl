@@ -211,7 +211,7 @@ Use this session as source profile for subsequent role assumptions without re-en
 		fmt.Printf("   MFA Device: %s\n", mfaDeviceArn)
 		fmt.Printf("   Source: %s\n", mfaSourceProfile)
 		fmt.Printf("   Expires: %s (%dh%dm remaining)\n",
-			expiration.Local().Format("2006-01-02 15:04:05"), hours, minutes)
+			internal.FormatBKK(expiration), hours, minutes)
 		fmt.Printf("\n💡 Now you can assume roles without MFA:\n")
 		fmt.Printf("   cloudctl login --source %s --profile <name> --role <role-arn>\n", mfaProfile)
 	},

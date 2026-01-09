@@ -142,7 +142,7 @@ var consoleCmd = &cobra.Command{
 
 		fmt.Printf("\n✅ Console URL generated for profile '%s'\n", s.Profile)
 		fmt.Printf("   Role: %s\n", s.RoleArn)
-		fmt.Printf("   Expires: %s\n\n", s.Expiration.Format("2006-01-02 15:04:05"))
+		fmt.Printf("   Expires: %s\n\n", internal.FormatBKK(s.Expiration))
 
 		if consoleOpen {
 			fmt.Println("🌐 Opening AWS Console in browser...")

@@ -103,7 +103,7 @@ var promptInfoCmd = &cobra.Command{
 		info := map[string]interface{}{
 			"profile":    currentSession.Profile,
 			"role_arn":   currentSession.RoleArn,
-			"expiration": currentSession.Expiration.Format(time.RFC3339),
+			"expiration": internal.FormatBKK(currentSession.Expiration),
 			"remaining":  int(remaining.Seconds()),
 			"expired":    remaining <= 0,
 		}

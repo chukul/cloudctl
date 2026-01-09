@@ -92,7 +92,7 @@ func startDaemonLoop(intervalMins int) {
 		return
 	}
 
-	fmt.Fprintf(logFile, "[%s] 🚀 [Daemon] Started (Interval: %d mins)\n", time.Now().Format("15:04:05"), intervalMins)
+	fmt.Fprintf(logFile, "[%s] 🚀 [Daemon] Started (Interval: %d mins)\n", internal.FormatBKK(time.Now()), intervalMins)
 
 	ticker := time.NewTicker(time.Duration(intervalMins) * time.Minute)
 	defer ticker.Stop()
@@ -109,7 +109,7 @@ func startDaemonLoop(intervalMins int) {
 				return
 			}
 			currentDay = now.YearDay()
-			fmt.Fprintf(logFile, "[%s] 🔄 [Daemon] Log rotated (new day started)\n", now.Format("15:04:05"))
+			fmt.Fprintf(logFile, "[%s] 🔄 [Daemon] Log rotated (new day started)\n", internal.FormatBKK(now))
 		}
 
 		// Run refresh check
@@ -122,17 +122,17 @@ func startDaemonLoop(intervalMins int) {
 func runRefreshCheck(logWriter *os.File) {
 	secret, err := internal.GetSecret("")
 	if err != nil {
-		fmt.Fprintf(logWriter, "[%s] ❌ [Daemon] Error: encryption secret required\n", time.Now().Format("15:04:05"))
+		fmt.Fprintf(logWriter, "[%s] ❌ [Daemon] Error: encryption secret required\n", internal.FormatBKK(time.Now()))
 		return
 	}
 
 	sessions, err := internal.ListAllSessions(secret)
 	if err != nil {
-		fmt.Fprintf(logWriter, "[%s] ❌ [Daemon] Error: failed to list sessions: %v\n", time.Now().Format("15:04:05"), err)
+		fmt.Fprintf(logWriter, "[%s] ❌ [Daemon] Error: failed to list sessions: %v\n", internal.FormatBKK(time.Now()), err)
 		return
 	}
 
-	fmt.Fprintf(logWriter, "[%s] 🔍 [Daemon] Checking %d sessions...\n", time.Now().Format("15:04:05"), len(sessions))
+	fmt.Fprintf(logWriter, "[%s] 🔍 [Daemon] Checking %d sessions...\n", internal.FormatBKK(time.Now()), len(sessions))
 
 	now := time.Now()
 	actionTaken := false
@@ -160,7 +160,7 @@ func runRefreshCheck(logWriter *os.File) {
 
 		// 5. Attempt Refresh
 		fmt.Fprintf(logWriter, "[%s] 🔄 [%s] Expiring in %v, starting silent refresh...\n",
-			now.Format("15:04:05"), s.Profile, time.Until(s.Expiration).Round(time.Second))
+			internal.FormatBKK(now), s.Profile, time.Until(s.Expiration).Round(time.Second))
 
 		refreshRegion := s.Region
 		if refreshRegion == "" {
@@ -172,15 +172,15 @@ func runRefreshCheck(logWriter *os.File) {
 		duration := time.Since(refreshStart).Round(10 * time.Millisecond)
 
 		if err != nil {
-			fmt.Fprintf(logWriter, "[%s] ❌ [%s] Refresh failed: %v\n", time.Now().Format("15:04:05"), s.Profile, err)
+			fmt.Fprintf(logWriter, "[%s] ❌ [%s] Refresh failed: %v\n", internal.FormatBKK(time.Now()), s.Profile, err)
 		} else {
-			fmt.Fprintf(logWriter, "[%s] ✅ [%s] Successfully refreshed (took %v)\n", time.Now().Format("15:04:05"), s.Profile, duration)
+			fmt.Fprintf(logWriter, "[%s] ✅ [%s] Successfully refreshed (took %v)\n", internal.FormatBKK(time.Now()), s.Profile, duration)
 		}
 		actionTaken = true
 	}
 
 	if !actionTaken {
-		fmt.Fprintf(logWriter, "[%s] 🟢 [Daemon] All sessions healthy. Next check in 5m.\n", time.Now().Format("15:04:05"))
+		fmt.Fprintf(logWriter, "[%s] 🟢 [Daemon] All sessions healthy. Next check in 5m.\n", internal.FormatBKK(time.Now()))
 	}
 }
 

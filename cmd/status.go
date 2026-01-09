@@ -180,10 +180,16 @@ func printSessionGroup(displays []sessionDisplay, status sessionStatus, title st
 			remainingStr,
 		)
 
-		// Show expiration time in dim color
-		fmt.Printf("   %sExpires: %s%s\n",
+		// Show source and expiration time
+		sourceInfo := ""
+		if s.SourceProfile != "" && s.RoleArn != "MFA-Session" {
+			sourceInfo = fmt.Sprintf("Source: %-12s ", s.SourceProfile)
+		}
+
+		fmt.Printf("   %s%sExpires: %s%s\n",
 			colorDim,
-			s.Expiration.Local().Format("2006-01-02 15:04:05"),
+			sourceInfo,
+			internal.FormatBKK(s.Expiration),
 			colorReset,
 		)
 	}
