@@ -16,11 +16,13 @@ A lightweight CLI tool for securely managing AWS AssumeRole sessions with MFA su
 - 🔐 **Secure Credential Storage** - Encrypt AWS credentials with AES-256-GCM
 - 🎯 **AssumeRole Support** - Easily assume IAM roles with MFA
 - 🎨 **Enhanced Gradient CLI** - Beautiful 24-bit color gradient UI
-- 🤖 **Auto-Refresh Daemon** - Background service with self-forking & macOS LaunchAgent support
+- 🤖 **Auto-Refresh Daemon** - Background service with self-forking, daily log rotation, and macOS LaunchAgent support
 - 📂 **Role Aliasing** - Bulk import/export IAM roles via JSON
 - 🌐 **Console Access** - Generate AWS console URLs instantly
 - 🧩 **Hybrid Login** - Reuse existing sessions as source for role assumption
 - 🏗️ **Smart Sync** - Export sessions to `~/.aws/credentials` with session type tracking
+- 🔄 **Intelligent Batch Refresh** - Refresh all sessions at once; restores expired sources with a single MFA prompt
+- 🇹🇭 **Bangkok Timezone** - All displays and logs standardized to BKK (UTC+7) time
 - **Interactive TUI**: Modern, interactive prompts sorted alphabetically (A-Z) for easy selection.
 - **Touch ID Support**: Securely store encryption keys in macOS Keychain for passwordless operation.
 - **MFA Session Caching**: Enter MFA once, assume unlimited roles for 12 hours.
@@ -158,7 +160,7 @@ cloudctl status --secret "1234567890ABCDEF1234567890ABCDEF"
 Active Sessions
 ────────────────────────────────────────────────────────────────────────────────
 🟢 prod-admin ← current      AdminRole (123456789012)           45m remaining
-   Expires: 2025-11-20 10:30:00
+   Source: 5358609      Expires: 2025-11-20 10:30:00
 
 🔒 mfa-session               MFA Session                        11h45m remaining
    Expires: 2025-11-20 22:30:00
@@ -166,7 +168,7 @@ Active Sessions
 Expiring Soon
 ────────────────────────────────────────────────────────────────────────────────
 🟡 staging                   DevOpsRole (987654321098)          12m remaining
-   Expires: 2025-11-20 09:42:00
+   Source: mfa-session  Expires: 2025-11-20 09:42:00
 ```
 
 **Status Icons:**
@@ -200,9 +202,7 @@ unset AWS_PROFILE
 eval $(cloudctl switch prod-admin)
 ```
 
-### 5. Smart Refresh & Restore
-
-Keep your sessions alive or restore expired ones using stored metadata. `cloudctl` will automatically decide between a silent refresh or an interactive MFA-based restore.
+Keep your sessions alive or restore expired ones using stored metadata. `cloudctl` will automatically decide between a silent refresh or an interactive MFA-based restore. Using `--all` enables **Intelligent Batch Refresh**, which restores expired source sessions (like MFA sessions) once and then automatically silent-refreshes all dependent role sessions.
 
 ```bash
 # Smart refresh interactively (Sorted A-Z)
@@ -456,9 +456,10 @@ Smart refresh or restore AWS sessions. It re-uses stored metadata (Source, Role,
 **Logic:**
 - **Active Session**: Attempts silent refresh without prompt.
 - **Expired/MFA Session**: Prompts for MFA token and performs a full re-login.
+- **Intelligent Batch**: When using `--all`, CloudCtl groups profiles by source. If a source is expired, it asks to restore it **once**, then uses that new session to silently refresh all roles associated with it.
 
 **Flags:**
-- `--all` - Refresh all active sessions silently (skips expired/interactive ones).
+- `--all` - Intelligent batch refresh (silent refresh active ones, prompt once per expired source).
 - `--profile` - Specific profile to refresh.
 - `--force` (`-f`) - Force interactive re-login even if session is still active.
 - `--secret` - Encryption key for decryption.
@@ -680,6 +681,7 @@ cloudctl/
 │   ├── os_utils.go   # OS-specific utilities
 │   ├── session.go    # Session types and handling
 │   ├── storage.go    # Credential storage logic
+│   ├── time_utils.go # Standardized BKK timezone and formatting
 │   ├── types.go      # Shared type definitions
 │   └── ui/           # Interactive UI components
 ├── go.mod
