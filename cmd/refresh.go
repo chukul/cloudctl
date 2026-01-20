@@ -233,7 +233,7 @@ func smartRefresh(profile string, secret string, force bool) {
 }
 
 func refreshAllSessions(secret string) {
-	fmt.Println("🔄 Smart refreshing all active sessions...")
+	fmt.Println("🔄 Intelligent batch refresh starting...")
 
 	sessions, err := internal.ListAllSessions(secret)
 	if err != nil {
@@ -242,41 +242,106 @@ func refreshAllSessions(secret string) {
 	}
 
 	if len(sessions) == 0 {
-		fmt.Println("No sessions found.")
+		fmt.Println("📭 No sessions found.")
 		return
 	}
+
+	// 1. Sort sessions to process MFA sessions first (they are often sources)
+	sort.Slice(sessions, func(i, j int) bool {
+		if sessions[i].RoleArn == "MFA-Session" && sessions[j].RoleArn != "MFA-Session" {
+			return true
+		}
+		return false
+	})
 
 	refreshed := 0
 	skipped := 0
 	failed := 0
+	restoredSources := make(map[string]bool)
 
 	for _, s := range sessions {
-		// For 'all', we only do silent refresh for Active sessions.
-		// We don't want to prompt MFA 20 times for expired ones in a loop.
-		if time.Now().After(s.Expiration) {
-			fmt.Printf("⏭️  Skipping '%s' (expired, use manual refresh to restore)\n", s.Profile)
-			skipped++
+		now := time.Now()
+		isExpired := now.After(s.Expiration)
+
+		// 2. Handle MFA Sessions (Potential Sources)
+		if s.RoleArn == "MFA-Session" {
+			if !isExpired {
+				fmt.Printf("✅ MFA Session '%s' is still active (%v remaining).\n", s.Profile, time.Until(s.Expiration).Round(time.Minute))
+				continue
+			}
+
+			// Expired MFA Session - Ask to restore
+			fmt.Printf("\n⚠️  MFA Session '%s' has expired.\n", s.Profile)
+			fmt.Printf("   Would you like to restore it now? (y/n): ")
+			var response string
+			fmt.Scanln(&response)
+			if response == "y" || response == "Y" {
+				smartRefresh(s.Profile, secret, false)
+				restoredSources[s.Profile] = true
+				refreshed++
+			} else {
+				fmt.Printf("⏭️  Skipping '%s'.\n", s.Profile)
+				skipped++
+			}
 			continue
 		}
 
-		if s.RoleArn == "MFA-Session" || s.SourceProfile == "" {
-			fmt.Printf("⏭️  Skipping '%s' (manual interaction required)\n", s.Profile)
-			skipped++
-			continue
-		}
-
+		// 3. Handle Role Sessions
+		// Try silent refresh first
 		_, err := internal.PerformRefresh(s, secret, s.Region)
-		if err != nil {
+		if err == nil {
+			fmt.Printf("✅ Refreshed '%s' silently.\n", s.Profile)
+			refreshed++
+			continue
+		}
+
+		// If silent refresh failed, check if it's because the source is expired
+		if s.SourceProfile != "" && isExpired {
+			// If we already restored the source or it's active, and it still fails, it's a real failure.
+			// But if we haven't tried to restore the source yet, let's offer it.
+
+			// Check if source is a cloudctl session
+			sourceSession, sourceErr := internal.LoadCredentials(s.SourceProfile, secret)
+			if sourceErr == nil && now.After(sourceSession.Expiration) {
+				if _, alreadyTried := restoredSources[s.SourceProfile]; !alreadyTried {
+					fmt.Printf("\n⚠️  Profile '%s' needs source '%s', but it is expired.\n", s.Profile, s.SourceProfile)
+					fmt.Printf("   Would you like to restore source '%s'? (y/n): ", s.SourceProfile)
+					var response string
+					fmt.Scanln(&response)
+					if response == "y" || response == "Y" {
+						smartRefresh(s.SourceProfile, secret, false)
+						restoredSources[s.SourceProfile] = true
+
+						// Retry silent refresh for the role after source is restored
+						_, retryErr := internal.PerformRefresh(s, secret, s.Region)
+						if retryErr == nil {
+							fmt.Printf("✅ Refreshed '%s' after source restore.\n", s.Profile)
+							refreshed++
+							continue
+						}
+						fmt.Printf("❌ Failed to refresh '%s' even after source restore: %v\n", s.Profile, retryErr)
+						failed++
+					} else {
+						fmt.Printf("⏭️  Skipping '%s' (source expired).\n", s.Profile)
+						skipped++
+						restoredSources[s.SourceProfile] = false // Mark as declined
+					}
+					continue
+				}
+			}
+		}
+
+		// If it's already expired and silent refresh failed (and it's not a source issue we can fix)
+		if isExpired {
+			fmt.Printf("⏭️  Skipping '%s' (expired, needs manual refresh)\n", s.Profile)
+			skipped++
+		} else {
 			fmt.Printf("❌ Failed to refresh '%s': %v\n", s.Profile, err)
 			failed++
-			continue
 		}
-
-		fmt.Printf("✅ Refreshed '%s' silently.\n", s.Profile)
-		refreshed++
 	}
 
-	fmt.Printf("\n📊 Summary: %d refreshed, %d skipped, %d failed\n", refreshed, skipped, failed)
+	fmt.Printf("\n📊 Summary: %d refreshed/active, %d skipped, %d failed\n", refreshed, skipped, failed)
 }
 
 func init() {
