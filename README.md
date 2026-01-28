@@ -215,12 +215,13 @@ cloudctl refresh prod-admin
 cloudctl refresh prod-admin --force
 
 # Silent refresh for all active sessions (Used by Daemon)
+# Automatically syncs results to credentials file upon success.
 cloudctl refresh --all
 ```
 
 ### 6. Auto-Refresh Daemon (macOS Plugin)
 
-Keep your sessions alive automatically. The daemon tracks the Region of each session to perform silent refreshes.
+Keep your sessions alive automatically. The daemon tracks the Region of each session to perform silent refreshes and **automatically syncs updated credentials** to `~/.aws/credentials`.
 
 ```bash
 # 1. Setup automatic startup (macOS only)
@@ -333,7 +334,7 @@ cloudctl sync --all
 cloudctl sync --profile prod-admin
 ```
 
-**Note:** `cloudctl` automatically detects your secret from macOS Keychain or environment variables. No `--secret` flag needed if setup.
+**Note:** `cloudctl` automatically performs a sync after any successful `refresh --all` or when the background daemon updates a session. Manual sync is only needed if you want to export a specific single profile or if you aren't using the automation features. `cloudctl` automatically detects your secret from macOS Keychain or environment variables. No `--secret` flag needed if setup.
 
 ## Commands Reference
 

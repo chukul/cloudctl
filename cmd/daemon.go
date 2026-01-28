@@ -179,7 +179,14 @@ func runRefreshCheck(logWriter *os.File) {
 		actionTaken = true
 	}
 
-	if !actionTaken {
+	if actionTaken {
+		count, err := internal.SyncAllToAWS(secret)
+		if err != nil {
+			fmt.Fprintf(logWriter, "[%s] ⚠️  [Daemon] Auto-sync failed: %v\n", internal.FormatBKK(time.Now()), err)
+		} else {
+			fmt.Fprintf(logWriter, "[%s] ✅ [Daemon] Synced %d sessions to ~/.aws/credentials\n", internal.FormatBKK(time.Now()), count)
+		}
+	} else {
 		fmt.Fprintf(logWriter, "[%s] 🟢 [Daemon] All sessions healthy. Next check in 5m.\n", internal.FormatBKK(time.Now()))
 	}
 }

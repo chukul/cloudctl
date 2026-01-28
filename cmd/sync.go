@@ -27,12 +27,24 @@ This allows external tools (Terraform, VS Code, etc.) to use your assumed roles 
 		secret, err := internal.GetSecret(syncSecret)
 		if err != nil {
 			fmt.Println("❌ Encryption secret required")
-			fmt.Println("\n💡 Set the secret or use macOS Keychain:")
-			fmt.Println("   export CLOUDCTL_SECRET=\"your-32-char-encryption-key\"")
 			return
 		}
 
-		credsPath := filepath.Join(os.Getenv("HOME"), ".aws", "credentials")
+		if syncAll {
+			count, err := internal.SyncAllToAWS(secret)
+			if err != nil {
+				fmt.Printf("❌ Sync failed: %v\n", err)
+				return
+			}
+			credsPath := filepath.Join(os.Getenv("HOME"), ".aws", "credentials")
+			fmt.Printf("✅ Synced %d profiles to %s\n", count, credsPath)
+			return
+		}
+
+		profile := syncProfile
+		if profile == "" && len(args) > 0 {
+			profile = args[0]
+		}
 
 		// Load all sessions
 		allSessions, err := internal.ListAllSessions(secret)
@@ -62,17 +74,15 @@ This allows external tools (Terraform, VS Code, etc.) to use your assumed roles 
 
 		// Filter sessions if profile specified
 		var sessionsToSync []*internal.AWSSession
-		if syncAll {
-			sessionsToSync = activeSessions
-		} else if syncProfile != "" {
+		if profile != "" {
 			for _, s := range activeSessions {
-				if s.Profile == syncProfile {
+				if s.Profile == profile {
 					sessionsToSync = append(sessionsToSync, s)
 					break
 				}
 			}
 			if len(sessionsToSync) == 0 {
-				fmt.Printf("❌ Profile '%s' not found or is expired.\n", syncProfile)
+				fmt.Printf("❌ Profile '%s' not found or is expired.\n", profile)
 				return
 			}
 		} else {
@@ -84,7 +94,6 @@ This allows external tools (Terraform, VS Code, etc.) to use your assumed roles 
 				if s.RoleArn == "MFA-Session" {
 					sessionType = "MFA"
 				}
-				// Format: "profile (Type)"
 				displayName := fmt.Sprintf("%-15s (%s)", s.Profile, sessionType)
 				options = append(options, displayName)
 				optionToProfile[displayName] = s.Profile
@@ -110,6 +119,7 @@ This allows external tools (Terraform, VS Code, etc.) to use your assumed roles 
 			return
 		}
 
+		credsPath := filepath.Join(os.Getenv("HOME"), ".aws", "credentials")
 		// Read existing credentials file
 		content, err := os.ReadFile(credsPath)
 		var existingLines []string
@@ -117,50 +127,46 @@ This allows external tools (Terraform, VS Code, etc.) to use your assumed roles 
 			existingLines = strings.Split(string(content), "\n")
 		}
 
-		// Remove cloudctl managed sections and their comments
+		// Remove cloudctl managed sections
 		newLines := []string{}
 		skipSection := false
 		for i := 0; i < len(existingLines); i++ {
 			line := existingLines[i]
 			trimmed := strings.TrimSpace(line)
 
-			// 1. Detect section start
 			if strings.HasPrefix(trimmed, "[") && strings.HasSuffix(trimmed, "]") {
-				profileName := strings.Trim(trimmed, "[]")
+				pName := strings.Trim(trimmed, "[]")
 				skipSection = false
 				for _, s := range sessionsToSync {
-					if s.Profile == profileName {
+					if s.Profile == pName {
 						skipSection = true
 						break
 					}
 				}
 			}
 
-			// 2. Identify and skip CloudCtl comments if they belong to a profile being replaced
 			if strings.HasPrefix(trimmed, "; Managed by cloudctl") {
-				foundHeader := ""
-				// Look ahead for the next profile header
+				foundH := ""
 				for j := i + 1; j < len(existingLines); j++ {
 					tj := strings.TrimSpace(existingLines[j])
 					if tj == "" || strings.HasPrefix(tj, ";") {
 						continue
 					}
 					if strings.HasPrefix(tj, "[") && strings.HasSuffix(tj, "]") {
-						foundHeader = strings.Trim(tj, "[]")
+						foundH = strings.Trim(tj, "[]")
 					}
 					break
 				}
-
-				if foundHeader != "" {
+				if foundH != "" {
 					isReplacing := false
 					for _, s := range sessionsToSync {
-						if s.Profile == foundHeader {
+						if s.Profile == foundH {
 							isReplacing = true
 							break
 						}
 					}
 					if isReplacing {
-						continue // Skip this comment line
+						continue
 					}
 				}
 			}
@@ -170,12 +176,9 @@ This allows external tools (Terraform, VS Code, etc.) to use your assumed roles 
 			}
 		}
 
-		// 3. Clean up potential trailing empty lines after filtering
 		for len(newLines) > 0 && strings.TrimSpace(newLines[len(newLines)-1]) == "" {
 			newLines = newLines[:len(newLines)-1]
 		}
-
-		// Append synced sessions
 		if len(newLines) > 0 && newLines[len(newLines)-1] != "" {
 			newLines = append(newLines, "")
 		}
@@ -186,8 +189,6 @@ This allows external tools (Terraform, VS Code, etc.) to use your assumed roles 
 			if s.RoleArn == "MFA-Session" {
 				sessionType = "MFA Session"
 			}
-
-			// Add comment identifying it as cloudctl managed
 			newLines = append(newLines, fmt.Sprintf("; Managed by cloudctl (%s) - Expires: %s", sessionType, internal.FormatBKK(s.Expiration)))
 			newLines = append(newLines, fmt.Sprintf("[%s]", s.Profile))
 			newLines = append(newLines, fmt.Sprintf("aws_access_key_id = %s", s.AccessKey))
@@ -197,9 +198,7 @@ This allows external tools (Terraform, VS Code, etc.) to use your assumed roles 
 			syncedCount++
 		}
 
-		// Write back
-		output := strings.Join(newLines, "\n")
-		if err := os.WriteFile(credsPath, []byte(output), 0600); err != nil {
+		if err := os.WriteFile(credsPath, []byte(strings.Join(newLines, "\n")), 0600); err != nil {
 			fmt.Printf("❌ Failed to write credentials file: %v\n", err)
 			return
 		}

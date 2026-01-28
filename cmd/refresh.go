@@ -342,6 +342,16 @@ func refreshAllSessions(secret string) {
 	}
 
 	fmt.Printf("\n📊 Summary: %d refreshed/active, %d skipped, %d failed\n", refreshed, skipped, failed)
+
+	if refreshed > 0 {
+		fmt.Println("🔄 Automatically syncing sessions to credentials file...")
+		syncCount, err := internal.SyncAllToAWS(secret)
+		if err != nil {
+			fmt.Printf("⚠️  Auto-sync failed: %v\n", err)
+		} else {
+			fmt.Printf("✅ Synced %d sessions to ~/.aws/credentials\n", syncCount)
+		}
+	}
 }
 
 func init() {
