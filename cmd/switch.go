@@ -100,6 +100,7 @@ var switchCmd = &cobra.Command{
 		fmt.Printf("export AWS_ACCESS_KEY_ID=%s\n", s.AccessKey)
 		fmt.Printf("export AWS_SECRET_ACCESS_KEY=%s\n", s.SecretKey)
 		fmt.Printf("export AWS_SESSION_TOKEN=%s\n", s.SessionToken)
+		fmt.Printf("export CLOUDCTL_PROFILE=%s\n", profile)
 	},
 }
 

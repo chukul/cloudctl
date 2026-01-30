@@ -12,7 +12,7 @@ import (
 )
 
 var (
-	CurrentVersion = "v1.1.0" // Will be overwritten by ldflags during build
+	CurrentVersion = "v1.2.1" // Will be overwritten by ldflags during build
 	GitHubAPI      = "https://api.github.com/repos/chukul/cloudctl/releases/latest"
 	CheckInterval  = 24 * time.Hour
 )
