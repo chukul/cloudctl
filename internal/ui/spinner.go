@@ -10,8 +10,8 @@ import (
 )
 
 var (
-	spinnerStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
-	textStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("252"))
+	spinnerStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#4A90E2"))
+	textStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("#FFFFFF")).Bold(true)
 )
 
 type errMsg error
@@ -75,7 +75,7 @@ func (m spinnerModel) View() string {
 	if m.quitting {
 		return ""
 	}
-	return fmt.Sprintf("%s %s", m.spinner.View(), textStyle.Render(m.text))
+	return "\n" + containerStyle.Render(fmt.Sprintf("%s %s", m.spinner.View(), textStyle.Render(m.text))) + "\n"
 }
 
 // Spin runs a blocking task with a spinner overlay.

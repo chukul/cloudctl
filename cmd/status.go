@@ -8,21 +8,37 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/lipgloss"
 	"github.com/chukul/cloudctl/internal"
 	"github.com/spf13/cobra"
 )
 
 var statusSecret string
 
-// ANSI color codes
-const (
-	colorReset  = "\033[0m"
-	colorRed    = "\033[31m"
-	colorGreen  = "\033[32m"
-	colorYellow = "\033[33m"
-	colorCyan   = "\033[36m"
-	colorBold   = "\033[1m"
-	colorDim    = "\033[2m"
+// ANSI color codes are replaced with lipgloss styles
+
+var (
+	titleStyle = lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color("#4A90E2")).
+		MarginBottom(1)
+
+	rowActiveStyle   = lipgloss.NewStyle().MarginBottom(0)
+	rowExpiringStyle = lipgloss.NewStyle().MarginBottom(0)
+	rowExpiredStyle  = lipgloss.NewStyle().MarginBottom(0).Faint(true)
+
+	profileActiveStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("#FFFFFF")).Bold(true)
+	profileExpiringStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#F5A623")).Bold(true)
+	profileExpiredStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("#D0021B")).Bold(true)
+
+	currentStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#4A90E2"))
+	roleStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("#B0BEC5"))
+	sourceStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("#78909C"))
+	timeStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("#90A4AE"))
+	
+	activeTagStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("#7ED321")).Bold(true)
+	expiringTagStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#F5A623")).Bold(true)
+	expiredTagStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("#D0021B")).Bold(true)
 )
 
 type sessionStatus int
@@ -128,13 +144,16 @@ var statusCmd = &cobra.Command{
 			}
 		}
 		if hasExpired {
-			fmt.Printf("\n%s💡 Tip:%s Use %scloudctl refresh [profile]%s to quickly restore expired sessions.\n", colorCyan, colorReset, colorBold, colorReset)
+			fmt.Println(lipgloss.NewStyle().MarginTop(1).Foreground(lipgloss.Color("#4A90E2")).Render("💡 Tip: ") +
+				lipgloss.NewStyle().Foreground(lipgloss.Color("#B0BEC5")).Render("Use ") +
+				lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#FFFFFF")).Render("cloudctl refresh [profile]") +
+				lipgloss.NewStyle().Foreground(lipgloss.Color("#B0BEC5")).Render(" to quickly restore expired sessions."))
 		}
 	},
 }
 
 func printSessionGroup(displays []sessionDisplay, status sessionStatus, title string) {
-	filtered := make([]sessionDisplay, 0)
+	var filtered []sessionDisplay
 	for _, d := range displays {
 		if d.status == status {
 			filtered = append(filtered, d)
@@ -145,8 +164,19 @@ func printSessionGroup(displays []sessionDisplay, status sessionStatus, title st
 		return
 	}
 
-	fmt.Printf("\n%s%s%s\n", colorBold, title, colorReset)
-	fmt.Println(strings.Repeat("─", 100))
+	var profileStyle lipgloss.Style
+
+	switch status {
+	case statusActive:
+		profileStyle = profileActiveStyle
+	case statusExpiring:
+		profileStyle = profileExpiringStyle
+	case statusExpired:
+		profileStyle = profileExpiredStyle
+	}
+
+	fmt.Printf("\n%s\n", titleStyle.Render(title))
+	fmt.Println(lipgloss.NewStyle().Foreground(lipgloss.Color("#4A90E2")).Render(strings.Repeat("─", 100)))
 
 	for _, d := range filtered {
 		s := d.session
@@ -154,43 +184,42 @@ func printSessionGroup(displays []sessionDisplay, status sessionStatus, title st
 		roleName := extractRoleName(s.RoleArn)
 
 		// Format profile name with current indicator
-		profileDisplay := s.Profile
+		profileDisplay := profileStyle.Render(s.Profile)
 		if d.isCurrent {
-			profileDisplay = fmt.Sprintf("%s%s ← current%s", colorCyan, s.Profile, colorReset)
+			profileDisplay += " " + currentStyle.Render("← current")
 		}
 
 		// Format role display
-		roleDisplay := s.RoleArn
+		roleDisplay := roleStyle.Render(s.RoleArn)
 		if roleName != "" && accountID != "" {
-			roleDisplay = fmt.Sprintf("%s (%s)", roleName, accountID)
+			roleDisplay = roleStyle.Render(fmt.Sprintf("%s (%s)", roleName, accountID))
 		} else if s.RoleArn == "MFA-Session" || s.RoleArn == "" {
-			roleDisplay = fmt.Sprintf("%sMFA Session%s", colorDim, colorReset)
+			roleDisplay = sourceStyle.Render("MFA Session")
 		}
 
 		// Format remaining time
-		remainingStr := formatDuration(d.remaining)
+		remainingStr := timeStyle.Render(formatDuration(d.remaining))
 		if d.status == statusExpired {
-			remainingStr = fmt.Sprintf("%sexpired%s", colorDim, colorReset)
+			remainingStr = lipgloss.NewStyle().Foreground(lipgloss.Color("#FF5555")).Render("Expired")
 		}
 
-		fmt.Printf("%s %-25s %-50s %s\n",
-			d.icon,
-			profileDisplay,
-			roleDisplay,
-			remainingStr,
-		)
+		// Use lipgloss to format exact widths while respecting ANSI sequences
+		profileCol := lipgloss.NewStyle().Width(25).Render(profileDisplay)
+		roleCol := lipgloss.NewStyle().Width(50).Render(roleDisplay)
+		timeCol := lipgloss.NewStyle().Width(20).Align(lipgloss.Right).Render(remainingStr)
 
-		// Show source and expiration time
+		// Line 1: Profile, Role, Remaining Time
+		fmt.Printf("%s %s %s %s\n", d.icon, profileCol, roleCol, timeCol)
+
+		// Line 2: Source Info and Expiration
 		sourceInfo := ""
 		if s.SourceProfile != "" && s.RoleArn != "MFA-Session" {
 			sourceInfo = fmt.Sprintf("Source: %-12s ", s.SourceProfile)
 		}
-
-		fmt.Printf("   %s%sExpires: %s%s\n",
-			colorDim,
-			sourceInfo,
-			internal.FormatBKK(s.Expiration),
-			colorReset,
+		
+		fmt.Printf("   %s%s\n",
+			sourceStyle.Render(sourceInfo),
+			sourceStyle.Render("Expires: "+internal.FormatBKK(s.Expiration)),
 		)
 	}
 }

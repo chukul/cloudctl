@@ -12,12 +12,29 @@ import (
 )
 
 var (
-	titleStyle        = lipgloss.NewStyle().MarginLeft(2).Foreground(lipgloss.Color("205")).Bold(true)
-	itemStyle         = lipgloss.NewStyle().PaddingLeft(4)
-	selectedItemStyle = lipgloss.NewStyle().PaddingLeft(2).Foreground(lipgloss.Color("170")).Bold(true)
-	paginationStyle   = list.DefaultStyles().PaginationStyle.PaddingLeft(4)
-	helpStyle         = list.DefaultStyles().HelpStyle.PaddingLeft(4).PaddingBottom(1)
-	quitTextStyle     = lipgloss.NewStyle().Margin(1, 0, 2, 4)
+	titleStyle = lipgloss.NewStyle().
+		MarginLeft(2).
+		Foreground(lipgloss.Color("#4A90E2")).
+		Bold(true)
+
+	itemStyle = lipgloss.NewStyle().
+		PaddingLeft(4).
+		Foreground(lipgloss.Color("#FFFFFF"))
+
+	selectedItemStyle = lipgloss.NewStyle().
+		PaddingLeft(2).
+		Foreground(lipgloss.Color("#7ED321")).
+		Bold(true)
+
+	paginationStyle = list.DefaultStyles().PaginationStyle.PaddingLeft(4).Foreground(lipgloss.Color("#90A4AE"))
+	helpStyle       = list.DefaultStyles().HelpStyle.PaddingLeft(4).PaddingBottom(1).Foreground(lipgloss.Color("#78909C"))
+	quitTextStyle   = lipgloss.NewStyle().Margin(1, 0, 2, 4).Foreground(lipgloss.Color("#D0021B")).Italic(true)
+	
+	containerStyle = lipgloss.NewStyle().
+		Margin(1, 2).
+		Padding(1, 1).
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("#90A4AE"))
 )
 
 type item string
@@ -90,7 +107,7 @@ func (m model) View() string {
 	if m.quitting {
 		return quitTextStyle.Render("Cancelled.")
 	}
-	return "\n" + m.list.View()
+	return "\n" + containerStyle.Render(m.list.View())
 }
 
 func SelectProfile(title string, profiles []string) (string, error) {

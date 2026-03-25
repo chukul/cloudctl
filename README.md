@@ -16,6 +16,7 @@ A lightweight CLI tool for securely managing AWS AssumeRole sessions with MFA su
 - 🔐 **Secure Credential Storage** - Encrypt AWS credentials with AES-256-GCM
 - 🎯 **AssumeRole Support** - Easily assume IAM roles with MFA
 - 🎨 **Enhanced Gradient CLI** - Beautiful 24-bit color gradient UI
+- 🚀 **Exec Wrapper** - Run local scripts (`terraform`, `pulumi`) with injected AWS credentials
 - 🤖 **Auto-Refresh Daemon** - Background service with self-forking, daily log rotation, and macOS LaunchAgent support
 - 📂 **Role Aliasing** - Bulk import/export IAM roles via JSON
 - 🌐 **Console Access** - Generate AWS console URLs instantly
@@ -157,18 +158,19 @@ cloudctl status --secret "1234567890ABCDEF1234567890ABCDEF"
 
 **Output:**
 ```
-Active Sessions
-────────────────────────────────────────────────────────────────────────────────
-🟢 prod-admin ← current      AdminRole (123456789012)           45m remaining
-   Source: 5358609      Expires: 2025-11-20 10:30:00
+```
+ACTIVE SESSIONS
+────────────────────────────────────────────────────────────────────────────────────────────────────
+🟢 prod-admin ← current                                          45m remaining
+   ↳ Role: arn:aws:iam::123456789012:role/AdminRole | Source: default 
 
-🔒 mfa-session               MFA Session                        11h45m remaining
-   Expires: 2025-11-20 22:30:00
+🔒 mfa-session                                                11h45m remaining
+   ↳ Role: MFA Session
 
-Expiring Soon
-────────────────────────────────────────────────────────────────────────────────
-🟡 staging                   DevOpsRole (987654321098)          12m remaining
-   Source: mfa-session  Expires: 2025-11-20 09:42:00
+EXPIRING SOON
+────────────────────────────────────────────────────────────────────────────────────────────────────
+🟡 staging                                                       12m remaining
+   ↳ Role: DevOpsRole (987654321098)                | Source: mfa-session  
 ```
 
 **Status Icons:**
@@ -177,7 +179,22 @@ Expiring Soon
 - 🔴 Red (EXPIRED) - Session has expired
 - 🔒 Lock (MFA SESSION) - MFA session token
 
-### 4. Quick Switch Between Profiles
+### 4. Execute AWS Commands (`exec`)
+
+Inject AWS credentials securely into a sub-process without altering your global environment variables. This is perfect for robust automation, local development, and IaC tools.
+
+```bash
+# Run AWS CLI natively
+cloudctl exec prod-admin -- aws s3 ls
+
+# Run Terraform or Pulumi with assumed roles
+cloudctl exec dev-readonly -- terraform plan
+
+# Interactive execution (CloudCtl will prompt you for the profile)
+cloudctl exec -- pulumi up
+```
+
+### 5. Quick Switch Between Profiles
 
 Fast profile switching with one command:
 
@@ -219,7 +236,7 @@ cloudctl refresh prod-admin --force
 cloudctl refresh --all
 ```
 
-### 6. Auto-Refresh Daemon (macOS Plugin)
+### 7. Auto-Refresh Daemon (macOS Plugin)
 
 Keep your sessions alive automatically. The daemon tracks the Region of each session to perform silent refreshes and **automatically syncs updated credentials** to `~/.aws/credentials`.
 
@@ -242,11 +259,11 @@ cloudctl daemon stop
 cloudctl daemon start --foreground
 ```
 
-### 7. Refresh Sessions
+### 8. Refresh Sessions
 
-See **[Smart Refresh & Restore](#5-smart-refresh--restore)** for detailed usage.
+See **[Smart Refresh & Restore](#6-smart-refresh--restore)** for detailed usage.
 
-### 7. Logout
+### 9. Logout
 
 Remove stored credentials:
 

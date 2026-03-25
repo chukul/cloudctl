@@ -75,9 +75,9 @@ func (m inputModel) View() string {
 	if m.quitting {
 		return quitTextStyle.Render("Cancelled.")
 	}
-	return fmt.Sprintf(
-		"\n%s\n\n%s\n\n",
+	return "\n" + containerStyle.Render(fmt.Sprintf(
+		"%s\n\n%s",
 		titleStyle.Render(m.prompt),
 		m.textInput.View(),
-	)
+	)) + "\n"
 }
